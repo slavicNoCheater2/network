@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>CrackLauncher — Играй в Minecraft с друзьями бесплатно</title>
+    <!-- Preconnect для шрифтов и стабильности -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- Основной шрифт: Montserrat + Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,600;14..32,700;14..32,800&family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Font Awesome 6 (бесплатные иконки) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(145deg, #0a0c12 0%, #0f1119 100%);
+            font-family: 'Inter', 'Montserrat', sans-serif;
+            color: #f0f3fa;
+            scroll-behavior: smooth;
+            overflow-x: hidden;
+        }
+
+        /* Кастомный скролл */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1a1e2a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #3b3f5c;
+            border-radius: 20px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #5e6b9b;
+        }
+
+        /* Анимация появления */
+        .fade-up {
+            opacity: 0;
+            transform: translateY(25px);
+            transition: opacity 0.8s cubic-bezier(0.2, 0.9, 0.4, 1.1), transform 0.7s ease;
+        }
+        .fade-up.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Контейнер */
+        .container {
+            max-width: 1300px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* Шапка */
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 24px 0 20px;
+            flex-wrap: wrap;
+            gap: 16px;
+            border-bottom: 1px solid rgba(98, 114, 164, 0.2);
+        }
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .logo-icon {
+            background: linear-gradient(135deg, #2ecc71, #27ae60);
+            width: 44px;
+            height: 44px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            box-shadow: 0 10px 20px -5px rgba(46, 204, 113, 0.3);
+        }
+        .logo-text {
+            font-size: 26px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(120deg, #fff, #a0e9c0);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .logo-badge {
+            background: rgba(46, 204, 113, 0.2);
+            border-radius: 40px;
+            padding: 5px 12px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #2ecc71;
+            border: 1px solid rgba(46, 204, 113, 0.4);
+        }
+        .nav-links {
+            display: flex;
+            gap: 32px;
+            align-items: center;
+        }
+        .nav-links a {
+            color: #cdd9ff;
+            text-decoration: none;
+            font-weight: 500;
+            transition: 0.2s;
+            font-size: 16px;
+        }
+        .nav-links a:hover {
+            color: #2ecc71;
+        }
+
+        /* hero */
+        .hero {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            padding: 60px 0 40px;
+            gap: 40px;
+        }
+        .hero-content {
+            flex: 1.2;
+        }
+        .hero-title {
+            font-size: 52px;
+            font-weight: 800;
+            line-height: 1.2;
+            background: linear-gradient(to right, #f0f3fa, #b9e6c8);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            margin-bottom: 20px;
+        }
+        .hero-title span {
+            background: linear-gradient(135deg, #2ecc71, #f1c40f);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .hero-desc {
+            font-size: 18px;
+            color: #b9c3e6;
+            margin-bottom: 30px;
+            max-width: 550px;
+            line-height: 1.5;
+        }
+        .btn-group {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 32px;
+            border-radius: 60px;
+            font-weight: 700;
+            font-size: 16px;
+            transition: 0.25s;
+            cursor: pointer;
+            text-decoration: none;
+            border: none;
+        }
+        .btn-primary {
+            background: linear-gradient(95deg, #2ecc71, #229954);
+            color: white;
+            box-shadow: 0 8px 20px rgba(46, 204, 113, 0.35);
+        }
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            filter: brightness(1.05);
+            box-shadow: 0 15px 25px rgba(46, 204, 113, 0.5);
+        }
+        .btn-outline {
+            background: transparent;
+            border: 2px solid rgba(46, 204, 113, 0.7);
+            color: #d0ffea;
+        }
+        .btn-outline:hover {
+            background: rgba(46, 204, 113, 0.1);
+            transform: translateY(-3px);
+            border-color: #2ecc71;
+        }
+        .hero-stats {
+            display: flex;
+            gap: 32px;
+            margin-top: 40px;
+        }
+        .stat-item {
+            text-align: left;
+        }
+        .stat-number {
+            font-size: 32px;
+            font-weight: 800;
+            color: #2ecc71;
+        }
+        .hero-image {
+            flex: 1;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"><rect width="400" height="400" fill="%23131a22" rx="40"/><circle cx="200" cy="180" r="50" fill="%232ecc71" opacity="0.2"/><rect x="140" y="240" width="120" height="20" fill="%232ecc71" opacity="0.6" rx="10"/><rect x="120" y="270" width="160" height="20" fill="%232ecc71" opacity="0.4" rx="10"/><path d="M170 310 L230 310 L250 350 L150 350 Z" fill="%232ecc71" opacity="0.5"/><circle cx="140" cy="180" r="12" fill="%23f1c40f"/><circle cx="260" cy="180" r="12" fill="%23f1c40f"/><rect x="180" y="150" width="40" height="20" fill="%23f39c12" rx="5"/></svg>') no-repeat center;
+            background-size: contain;
+            min-height: 320px;
+            filter: drop-shadow(0 20px 25px -12px rgba(0,0,0,0.5));
+        }
+
+        /* раздел фич */
+        .features {
+            padding: 80px 0;
+        }
+        .section-title {
+            text-align: center;
+            font-size: 38px;
+            font-weight: 800;
+            margin-bottom: 20px;
+        }
+        .section-sub {
+            text-align: center;
+            color: #9aa7cf;
+            margin-bottom: 60px;
+            font-size: 18px;
+        }
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+            gap: 32px;
+        }
+        .feature-card {
+            background: rgba(18, 22, 35, 0.7);
+            backdrop-filter: blur(4px);
+            border-radius: 32px;
+            padding: 32px 24px;
+            transition: 0.3s;
+            border: 1px solid rgba(46, 204, 113, 0.2);
+            text-align: center;
+        }
+        .feature-card:hover {
+            transform: translateY(-8px);
+            border-color: rgba(46, 204, 113, 0.5);
+            background: rgba(28, 34, 52, 0.8);
+            box-shadow: 0 20px 30px -15px rgba(0,0,0,0.5);
+        }
+        .feature-icon {
+            font-size: 48px;
+            color: #2ecc71;
+            margin-bottom: 20px;
+        }
+        .feature-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        /* как установить */
+        .howto {
+            background: linear-gradient(120deg, #0e111b, #131725);
+            border-radius: 64px;
+            padding: 60px 40px;
+            margin: 40px 0 60px;
+        }
+        .steps {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 35px;
+            margin-top: 40px;
+        }
+        .step {
+            flex: 1;
+            min-width: 180px;
+            text-align: center;
+            background: rgba(0,0,0,0.3);
+            padding: 24px 16px;
+            border-radius: 32px;
+        }
+        .step-number {
+            background: #2ecc71;
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: 800;
+            border-radius: 30px;
+            margin: 0 auto 20px;
+            color: #0a0c12;
+        }
+
+        /* кд карта (преимущества лаунчера) */
+        .why-card {
+            background: rgba(46, 204, 113, 0.05);
+            border-radius: 48px;
+            padding: 48px;
+            border: 1px solid rgba(46,204,113,0.3);
+            margin: 40px 0;
+        }
+        .why-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 32px;
+            justify-content: space-between;
+        }
+        .why-item {
+            flex: 1;
+            min-width: 180px;
+            display: flex;
+            gap: 18px;
+            align-items: center;
+        }
+        .why-icon {
+            font-size: 42px;
+        }
+
+        /* CTA финал */
+        .cta {
+            background: radial-gradient(ellipse at 30% 40%, #1c2a2a, #0b0e16);
+            border-radius: 70px;
+            padding: 60px 40px;
+            text-align: center;
+            margin-bottom: 60px;
+        }
+        .cta h2 {
+            font-size: 42px;
+            margin-bottom: 20px;
+        }
+        .download-btn {
+            font-size: 20px;
+            padding: 18px 48px;
+            margin-top: 20px;
+        }
+
+        /* footer */
+        footer {
+            text-align: center;
+            padding: 40px 0 30px;
+            border-top: 1px solid rgba(98, 114, 164, 0.2);
+            color: #6b789e;
+        }
+
+        /* адаптив */
+        @media (max-width: 800px) {
+            .hero-title {
+                font-size: 38px;
+            }
+            .navbar {
+                flex-direction: column;
+                text-align: center;
+            }
+            .nav-links {
+                justify-content: center;
+                flex-wrap: wrap;
+                gap: 20px;
+            }
+            .hero {
+                flex-direction: column;
+                text-align: center;
+            }
+            .hero-desc {
+                margin-left: auto;
+                margin-right: auto;
+            }
+            .hero-stats {
+                justify-content: center;
+            }
+            .btn-group {
+                justify-content: center;
+            }
+            .why-item {
+                flex-direction: column;
+                text-align: center;
+            }
+            .howto {
+                padding: 40px 20px;
+            }
+        }
+
+        /* анимация для кнопки скролла */
+        .glow {
+            animation: pulseGlow 2s infinite;
+        }
+        @keyframes pulseGlow {
+            0% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.4);}
+            70% { box-shadow: 0 0 0 12px rgba(46, 204, 113, 0);}
+            100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0);}
+        }
+        /* дополнительный декор */
+        .bg-noise {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            opacity: 0.02;
+            z-index: -1;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+        }
+    </style>
+</head>
+<body>
+<div class="bg-noise"></div>
+
+<div class="container">
+    <!-- Навигация (верхняя плашка) — без иконок соцсетей, только логика -->
+    <div class="navbar">
+        <div class="logo">
+            <div class="logo-icon"><i class="fas fa-crown"></i></div>
+            <div class="logo-text">CrackLauncher</div>
+            <div class="logo-badge">Minecraft ReadOnly</div>
+        </div>
+        <div class="nav-links">
+            <a href="#features">Возможности</a>
+            <a href="#howto">Установка</a>
+            <a href="#download">Скачать</a>
+        </div>
+    </div>
+
+    <!-- Hero Section -->
+    <div class="hero">
+        <div class="hero-content fade-up">
+            <div class="hero-title">
+                Играй в <span>Minecraft</span><br> без лицензии с друзьями
+            </div>
+            <div class="hero-desc">
+                CrackLauncher — это мощный, безопасный и полностью бесплатный лаунчер для Minecraft. 
+                Поддержка скинов, модов, быстрых обновлений и стабильный онлайн по сети.
+            </div>
+            <div class="btn-group">
+                <a href="https://github.com/slavicNoCheater2/network/raw/refs/heads/main/CrackLauncher.exe" class="btn btn-primary glow" id="directDownloadBtn"><i class="fas fa-download"></i> Скачать для Windows</a>
+                <a href="#howto" class="btn btn-outline"><i class="fas fa-play-circle"></i> Как установить</a>
+            </div>
+            <div class="hero-stats">
+                <div class="stat-item"><div class="stat-number">100k+</div><div>активных игроков</div></div>
+                <div class="stat-item"><div class="stat-number">1.8-1.20+</div><div>поддержка версий</div></div>
+                <div class="stat-item"><div class="stat-number">24/7</div><div>онлайн поддержка</div></div>
+            </div>
+        </div>
+        <div class="hero-image fade-up" style="transition-delay: 0.1s;"></div>
+    </div>
+
+    <!-- Блок фич -->
+    <div id="features" class="features">
+        <div class="section-title fade-up">Почему именно CrackLauncher?</div>
+        <div class="section-sub fade-up">Всё для комфортной игры без ограничений</div>
+        <div class="features-grid">
+            <div class="feature-card fade-up"><div class="feature-icon"><i class="fas fa-tachometer-alt"></i></div><div class="feature-title">Молниеносный запуск</div><div>Оптимизированный код и предзагрузка ассетов — влетай на сервер за секунды.</div></div>
+            <div class="feature-card fade-up"><div class="feature-icon"><i class="fas fa-users"></i></div><div class="feature-title">Игра с друзьями</div><div>Поддержка LAN и любых пиратских серверов. Полная совместимость с TLauncher и другими.</div></div>
+            <div class="feature-card fade-up"><div class="feature-icon"><i class="fas fa-palette"></i></div><div class="feature-title">Скины / Cape</div><div>Встроенный сменщик скинов и плащей, загрузка из файла или URL.</div></div>
+            <div class="feature-card fade-up"><div class="feature-icon"><i class="fas fa-cogs"></i></div><div class="feature-title">Моды и Forge</div><div>Автоматическая установка Forge / Fabric и менеджер модов прямо в лаунчере.</div></div>
+        </div>
+    </div>
+
+    <!-- Как установить (howto) -->
+    <div id="howto" class="howto fade-up">
+        <div style="text-align:center"><i class="fas fa-dragon" style="font-size: 48px; color:#2ecc71;"></i></div>
+        <div class="section-title" style="font-size: 32px;">Установка за 3 шага</div>
+        <div class="steps">
+            <div class="step"><div class="step-number">1</div><h3>Скачай лаунчер</h3><p>Нажми на кнопку загрузки и сохрани CrackLauncher Setup.exe</p></div>
+            <div class="step"><div class="step-number">2</div><h3>Установи</h3><p>Запусти файл, выбери папку и дождись завершения (2 минуты)</p></div>
+            <div class="step"><div class="step-number">3</div><h3>Запускай & Играй</h3><p>Открой CrackLauncher, выбери версию и нажимай «Играть»! Minecraft твой ❤️</p></div>
+        </div>
+        <div style="text-align:center; margin-top: 40px;">
+            <a href="https://github.com/slavicNoCheater2/network/raw/refs/heads/main/CrackLauncher.exe" class="btn btn-primary" style="background:#f39c12; box-shadow:0 5px 15px #f39c1240;"><i class="fas fa-file-archive"></i> Скачать установщик .exe</a>
+        </div>
+    </div>
+
+    <!-- Преимущества + безопасность -->
+    <div class="why-card fade-up">
+        <div class="why-grid">
+            <div class="why-item"><i class="fas fa-shield-alt why-icon" style="color:#2ecc71"></i><div><b>100% Безопасно</b><br>Открытый код, проверка файлов</div></div>
+            <div class="why-item"><i class="fas fa-sync-alt why-icon" style="color:#2ecc71"></i><div><b>Авто-обновления</b><br>Новые версии Minecraft сразу</div></div>
+            <div class="why-item"><i class="fas fa-tools why-icon" style="color:#2ecc71"></i><div><b>Встроенный Fixer</b><br>Исправляет ошибки Java/библиотек</div></div>
+            <div class="why-item"><i class="fas fa-gamepad why-icon" style="color:#2ecc71"></i><div><b>Оптимизация FPS</b><br>Настройки под слабые ПК</div></div>
+        </div>
+    </div>
+
+    <!-- Блок загрузки (CTA) с прямой ссылкой -->
+    <div id="download" class="cta fade-up">
+        <h2>Готов начать свое приключение?</h2>
+        <p style="font-size: 18px; margin-bottom: 10px;">CrackLauncher — лучшее решение для игры в Minecraft без лицензии. Присоединяйся к тысячам игроков!</p>
+        <div style="margin: 30px 0 20px;">
+            <i class="fab fa-windows" style="font-size: 48px; margin-right: 15px;"></i>
+            <i class="fab fa-apple" style="font-size: 48px; margin-right: 15px; opacity: 0.7;"></i>
+            <i class="fab fa-linux" style="font-size: 48px; opacity: 0.7;"></i>
+        </div>
+        <a href="https://github.com/slavicNoCheater2/network/raw/refs/heads/main/CrackLauncher.exe" class="btn btn-primary download-btn" id="realDownloadBtn"><i class="fas fa-download"></i> Скачать CrackLauncher (версия 3.2.1)</a>
+        <p style="margin-top: 24px; font-size: 14px;">*Поддерживает Windows 10/11, 7/8, macOS (экспериментально) и Linux</p>
+        <p style="margin-top: 16px;"><i class="fas fa-lock"></i> Без вирусов, без рекламы, только чистый Minecraft!</p>
+    </div>
+
+    <!-- Footer — полностью чистый, без соцсетей, без лишних фраз -->
+    <footer>
+        <p>© 2025 CrackLauncher · Неофициальный проект для игры в Minecraft. Mojang не поддерживает.</p>
+    </footer>
+</div>
+
+<!-- Скрипт анимаций + дополнительный эффект для подтверждения скачивания -->
+<script>
+    // Анимация появления при скролле
+    const fadeElements = document.querySelectorAll('.fade-up');
+    
+    function checkFade() {
+        fadeElements.forEach(el => {
+            const rect = el.getBoundingClientRect();
+            const isVisible = rect.top < window.innerHeight - 80;
+            if (isVisible) {
+                el.classList.add('visible');
+            }
+        });
+    }
+    window.addEventListener('scroll', checkFade);
+    window.addEventListener('load', checkFade);
+    checkFade();
+    
+    // Красивый тост-уведомление при клике на любую из кнопок скачивания (прямые ссылки)
+    const downloadButtons = document.querySelectorAll('a[href="https://github.com/slavicNoCheater2/network/raw/refs/heads/main/CrackLauncher.exe"]');
+    
+    function showDownloadToast() {
+        const toast = document.createElement('div');
+        toast.innerText = '🚀 Скачивание CrackLauncher началось! Файл загружается...';
+        toast.style.position = 'fixed';
+        toast.style.bottom = '30px';
+        toast.style.left = '50%';
+        toast.style.transform = 'translateX(-50%)';
+        toast.style.backgroundColor = '#2ecc71';
+        toast.style.color = '#0a0c12';
+        toast.style.fontWeight = 'bold';
+        toast.style.padding = '14px 28px';
+        toast.style.borderRadius = '60px';
+        toast.style.zIndex = '9999';
+        toast.style.fontSize = '16px';
+        toast.style.boxShadow = '0 10px 20px rgba(0,0,0,0.3)';
+        toast.style.backdropFilter = 'blur(8px)';
+        toast.style.background = 'linear-gradient(135deg, #2ecc71, #27ae60)';
+        toast.style.border = 'none';
+        document.body.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 500);
+        }, 2800);
+    }
+    
+    downloadButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            // Разрешаем переход по ссылке (реальное скачивание)
+            // Но показываем уведомление для красоты
+            setTimeout(showDownloadToast, 50);
+        });
+    });
+    
+    // Плавная прокрутка для якорей
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function(e) {
+            const href = this.getAttribute('href');
+            if(href === "#" || href === "") return;
+            const target = document.querySelector(href);
+            if(target) {
+                e.preventDefault();
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+    });
+    
+    // Эффект наведения на главную кнопку
+    const heroPrimaryBtn = document.querySelector('.hero .btn-primary');
+    if(heroPrimaryBtn) {
+        heroPrimaryBtn.addEventListener('mouseenter', () => {
+            heroPrimaryBtn.style.transform = 'scale(1.02)';
+        });
+        heroPrimaryBtn.addEventListener('mouseleave', () => {
+            heroPrimaryBtn.style.transform = 'scale(1)';
+        });
+    }
+    
+    // Подсветка активного раздела меню
+    const sections = document.querySelectorAll('div[id], section[id]');
+    const navLinks = document.querySelectorAll('.nav-links a');
+    window.addEventListener('scroll', () => {
+        let current = '';
+        const scrollPos = window.scrollY + 150;
+        sections.forEach(section => {
+            const sectionTop = section.offsetTop;
+            const sectionHeight = section.clientHeight;
+            if(scrollPos >= sectionTop && scrollPos < sectionTop + sectionHeight) {
+                current = section.getAttribute('id');
+            }
+        });
+        navLinks.forEach(link => {
+            link.style.color = '#cdd9ff';
+            const href = link.getAttribute('href').substring(1);
+            if(href === current && current !== '') {
+                link.style.color = '#2ecc71';
+            }
+        });
+    });
+</script>
+</body>
+</html>
